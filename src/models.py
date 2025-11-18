@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, Any
 
 class AssumptionState(TypedDict, total=False):
     """
@@ -12,7 +12,7 @@ class AssumptionState(TypedDict, total=False):
         intent_card: Final output containing task and assumptions
     """
     user_query: str
-    table_cards: List[Dict[str, Any]]
-    assumption_catalog: List[Dict[str, Any]]
-    assumptions: List[Dict[str, Any]]
-    intent_card: Dict[str, Any]
+    table_cards: list[dict[str, Any]]
+    assumption_catalog: list[dict[str, Any]]
+    assumptions: list[dict[str, Any]]
+    intent_card: dict[str, Any]
