@@ -1,7 +1,8 @@
 import json
 
-from typing import Dict, Any
+from typing import Any
 from langchain_openai import AzureChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from ..models import AssumptionState
 
@@ -28,9 +29,8 @@ def select_assumptions(
     table_cards = state["table_cards"]
     catalog = state["assumption_catalog"]
 
-    # Construct the prompt
-    prompt = f"""
-You are an Assumption Agent for a text-to-SQL system.
+    # Construct the system prompt (role and instructions)
+    system_prompt = """You are an Assumption Agent for a text-to-SQL system.
 
 Your job:
 1. Look at the user query.
@@ -39,30 +39,35 @@ Your job:
 4. For each catalog entry that is relevant to this query, pick a value.
 5. Return a JSON array. No explanation outside JSON.
 
-Input:
-- User query:
-{user_query}
-
-- Table cards (JSON):
-{json.dumps(table_cards, indent=2)}
-
-- Assumption catalog (JSON):
-{json.dumps(catalog, indent=2)}
-
 Output format, strictly JSON, no extra text:
 
 [
-  {{"id": "time_basis", "value": "first_received", "why": "Reason in one sentence"}},
-  {{"id": "age_dimension", "value": "age_group", "why": "Reason in one sentence"}}
+  {"id": "time_basis", "value": "first_received", "why": "Reason in one sentence"},
+  {"id": "age_dimension", "value": "age_group", "why": "Reason in one sentence"}
 ]
 
 Only use assumption ids and values that exist in the catalog.
-If a catalog entry is clearly irrelevant, you may omit it.
-"""
+If a catalog entry is clearly irrelevant, you may omit it."""
+
+    # Construct the user prompt (actual data and query)
+    user_prompt = f"""User query:
+{user_query}
+
+Table cards (JSON):
+{json.dumps(table_cards, indent=2)}
+
+Assumption catalog (JSON):
+{json.dumps(catalog, indent=2)}"""
+
+    # Create message list with proper role separation
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt)
+    ]
 
     # Invoke LLM with tracing
-    structured_llm = llm.with_structured_output(method='json_mode') # to do: specify Pydantic class schema
-    structured_response = structured_llm.invoke(prompt, config={"callbacks": [langfuse_handler]})
+    structured_llm = llm.with_structured_output(method='json_mode')  # to do: specify Pydantic class schema
+    structured_response = structured_llm.invoke(messages, config={"callbacks": [langfuse_handler]})
 
     # Update and return state
     new_state: AssumptionState = dict(state)
@@ -80,7 +85,7 @@ def build_intent_card(state: AssumptionState) -> AssumptionState:
     Returns:
         Updated state with intent_card added
     """
-    intent_card: Dict[str, Any] = {
+    intent_card: dict[str, Any] = {
         "task": state["user_query"],
         "assumptions": state["assumptions"],
     }
