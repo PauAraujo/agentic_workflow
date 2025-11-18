@@ -1,0 +1,34 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+# add here mypy with a dot beforehand
+
+# Virtual environments
+.venv
+
+# Environment variables
+**/.env
+
+# IDE
+.idea/          # PyCharm
+
+# Python version managers
+.python-version
+
+# OS files
+.DS_Store       # macOS
+Thumbs.db       # Windows
+
+# UV
+uv.lock
+
+# Project-specific folders
+old/
+.ipynb_checkpoints/
+
+# Unstructured notes
+REMINDERS.md

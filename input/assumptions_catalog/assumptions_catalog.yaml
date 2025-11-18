@@ -1,0 +1,58 @@
+assumptions_catalog:
+  - id: age_measure
+    label: "Preferred age measure"
+    description: "Which patient age representation to use in the query."
+    values: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
+    default: "PATIENT_AGE_GROUP_ID"
+    applicable_if:
+      tables_any_of: ["icsr.patient"]
+      columns_present: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
+
+  - id: age_group_source
+    label: "Source of age groups"
+    description: "Whether to use the coded age group lookup or derive bands from ONSET_AGE."
+    values: ["use_lookup_table", "derive_from_onset_age"]
+    default: "use_lookup_table"
+    applicable_if:
+      tables_any_of: ["icsr.patient", "icsr.patient_age_group"]
+      columns_present: ["PATIENT_AGE_GROUP_ID"]
+
+  - id: age_banding
+    label: "Age banding for ONSET_AGE"
+    description: "Band definition when age_measure is ONSET_AGE."
+    values:
+      - "0_17_18_64_65_plus"
+      - "no_banding"
+    default: "0_17_18_64_65_plus"
+    applicable_if:
+      tables_any_of: ["icsr.patient"]
+      columns_present: ["ONSET_AGE"]
+
+  - id: sex_inclusion
+    label: "Sex categories to include"
+    description: "Whether to restrict analysis to Male and Female only."
+    values:
+      - "male_female_only"
+      - "all_codes"
+    default: "male_female_only"
+    applicable_if:
+      tables_any_of: ["icsr.patient", "icsr.patient_sex"]
+      columns_present: ["PATIENT_SEX_ID"]
+
+  - id: missing_age_policy
+    label: "Handling of missing age"
+    description: "How to treat patients where the chosen age measure is missing."
+    values: ["exclude_from_analysis", "keep_as_unknown_group"]
+    default: "exclude_from_analysis"
+    applicable_if:
+      tables_any_of: ["icsr.patient"]
+      columns_present: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
+
+  - id: counting_unit
+    label: "Counting unit"
+    description: "What unit to count in aggregations."
+    values: ["distinct_patients", "rows"]
+    default: "distinct_patients"
+    applicable_if:
+      tables_any_of: ["icsr.patient"]
+      columns_present: ["SAFETY_REPORT_ID"]
