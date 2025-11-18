@@ -1,56 +1,54 @@
 {
-  "table_card": {
-    "name": "icsr.patient",
-    "purpose": "Stores basic demographic attributes of the patient for each safety report, focused on age and sex.",
-    "granularity": "One row per patient per safety report.",
-    "primary_key": ["SAFETY_REPORT_ID"],
-    "foreign_keys": [
-      {
-        "column": "PATIENT_AGE_GROUP_ID",
-        "references": "icsr.patient_age_group"
-      },
-      {
-        "column": "PATIENT_SEX_ID",
-        "references": "icsr.patient_sex"
-      }
-    ],
-    "columns": [
-      {
-        "name": "SAFETY_REPORT_ID",
-        "type": "NUMBER(15,0)",
-        "nullable": false,
-        "role": ["primary_key", "case_join_key"],
-        "description": "Identifier of the safety report. Functions as the distinct patient or case key in this PoC."
-      },
-      {
-        "name": "ONSET_AGE",
-        "type": "NUMBER",
-        "nullable": true,
-        "role": ["age", "measure"],
-        "description": "Patient age at time of onset of reaction or event. Interpreted in years for this PoC."
-      },
-      {
-        "name": "PATIENT_AGE_GROUP_ID",
-        "type": "NUMBER(15,0)",
-        "nullable": true,
-        "role": ["foreign_key", "age_group"],
-        "description": "Reference to the patient age group in icsr.patient_age_group."
-      },
-      {
-        "name": "PATIENT_SEX_ID",
-        "type": "NUMBER(15,0)",
-        "nullable": true,
-        "role": ["foreign_key", "sex"],
-        "description": "Reference to the sex category in icsr.patient_sex."
-      }
-    ],
-    "planning_hints": {
-      "distinct_case_key": "SAFETY_REPORT_ID",
-      "age_fields": {
-        "exact_age": "ONSET_AGE",
-        "age_group_column": "PATIENT_AGE_GROUP_ID"
-      },
-      "sex_column": "PATIENT_SEX_ID"
+  "name": "icsr.patient",
+  "purpose": "Stores basic demographic attributes of the patient for each safety report, focused on age and sex.",
+  "granularity": "One row per patient per safety report.",
+  "primary_key": ["SAFETY_REPORT_ID"],
+  "foreign_keys": [
+    {
+      "column": "PATIENT_AGE_GROUP_ID",
+      "references": "icsr.patient_age_group"
+    },
+    {
+      "column": "PATIENT_SEX_ID",
+      "references": "icsr.patient_sex"
     }
+  ],
+  "columns": [
+    {
+      "name": "SAFETY_REPORT_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": false,
+      "role": ["primary_key", "case_join_key"],
+      "description": "Identifier of the safety report. Functions as the distinct patient or case key in this PoC."
+    },
+    {
+      "name": "ONSET_AGE",
+      "type": "NUMBER",
+      "nullable": true,
+      "role": ["age", "measure"],
+      "description": "Patient age at time of onset of reaction or event. Interpreted in years for this PoC."
+    },
+    {
+      "name": "PATIENT_AGE_GROUP_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "role": ["foreign_key", "age_group"],
+      "description": "Reference to the patient age group in icsr.patient_age_group."
+    },
+    {
+      "name": "PATIENT_SEX_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "role": ["foreign_key", "sex"],
+      "description": "Reference to the sex category in icsr.patient_sex."
+    }
+  ],
+  "planning_hints": {
+    "distinct_case_key": "SAFETY_REPORT_ID",
+    "age_fields": {
+      "exact_age": "ONSET_AGE",
+      "age_group_column": "PATIENT_AGE_GROUP_ID"
+    },
+    "sex_column": "PATIENT_SEX_ID"
   }
 }
