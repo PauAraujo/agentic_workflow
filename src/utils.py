@@ -16,17 +16,14 @@ def load_table_cards(base_path: str = "input/table_cards") -> List[Dict[str, Any
     """
     base = Path(base_path)
 
-    # Load individual table card files
-    patient = json.loads((base / "patient.json").read_text())
-    patient_age_group = json.loads((base / "patient_age_group.json").read_text())
-    patient_sex = json.loads((base / "patient_sex.json").read_text())
+    #  load all JSON files in the directory
+    table_cards = []
+    for json_file in sorted(base.glob("*.json")):
+        data = json.loads(json_file.read_text())
+        if "table_card" in data:
+            table_cards.append(data["table_card"])
 
-    # Extract table_card from each
-    return [
-        patient["table_card"],
-        patient_age_group["table_card"],
-        patient_sex["table_card"],
-    ]
+    return table_cards
 
 
 def load_assumption_catalog(
