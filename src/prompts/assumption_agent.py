@@ -1,4 +1,4 @@
-ASSUMPTION_AGENT_SYSTEM_PROMPT = """You are an Assumption Agent for a text-to-SQL system.
+SYSTEM_PROMPT = """You are an Assumption Agent for a text-to-SQL system.
 
 Your job:
 1. Look at the user query.
@@ -17,7 +17,8 @@ Output format, strictly JSON, no extra text:
 Only use assumption ids and values that exist in the catalog.
 If a catalog entry is clearly irrelevant, you may omit it."""
 
-ASSUMPTION_AGENT_USER_PROMPT = """User query:
+
+USER_PROMPT = """User query:
 {user_query}
 
 Table cards (JSON):

@@ -1,3 +1,1 @@
-from .assumption_agent_prompt import ASSUMPTION_AGENT_SYSTEM_PROMPT, ASSUMPTION_AGENT_USER_PROMPT
-
-__all__ = ["ASSUMPTION_AGENT_SYSTEM_PROMPT", "ASSUMPTION_AGENT_USER_PROMPT"]
+from .factory import prompt_factory

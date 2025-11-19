@@ -2,9 +2,10 @@ import json
 
 from typing import Any
 from langchain_openai import AzureChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 
 from ..models import AssumptionState
+from ..prompts import prompt_factory
+from ..prompts.assumption_agent import SYSTEM_PROMPT, USER_PROMPT
 
 def select_assumptions(
     state: AssumptionState,
@@ -25,47 +26,16 @@ def select_assumptions(
     Returns:
         Updated state with selected assumptions added
     """
-    user_query = state["user_query"]
-    table_cards = state["table_cards"]
-    catalog = state["assumption_catalog"]
+    chat_prompt = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
-    # Construct the system prompt (role and instructions)
-    system_prompt = """You are an Assumption Agent for a text-to-SQL system.
+    # Format prompt with state variables
+    messages = chat_prompt.format_messages(
+        user_query=state["user_query"],
+        table_cards=json.dumps(state["table_cards"], indent=2),
+        assumption_catalog=json.dumps(state["assumption_catalog"], indent=2)
+    )
 
-Your job:
-1. Look at the user query.
-2. Look at the available tables.
-3. Look at the assumption catalog.
-4. For each catalog entry that is relevant to this query, pick a value.
-5. Return a JSON array. No explanation outside JSON.
-
-Output format, strictly JSON, no extra text:
-
-[
-  {"id": "time_basis", "value": "first_received", "why": "Reason in one sentence"},
-  {"id": "age_dimension", "value": "age_group", "why": "Reason in one sentence"}
-]
-
-Only use assumption ids and values that exist in the catalog.
-If a catalog entry is clearly irrelevant, you may omit it."""
-
-    # Construct the user prompt (actual data and query)
-    user_prompt = f"""User query:
-{user_query}
-
-Table cards (JSON):
-{json.dumps(table_cards, indent=2)}
-
-Assumption catalog (JSON):
-{json.dumps(catalog, indent=2)}"""
-
-    # Create message list with proper role separation
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_prompt)
-    ]
-
-    # Invoke LLM with tracing
+    # Invoke LLM with tracing --> put in separate function?
     structured_llm = llm.with_structured_output(method='json_mode')  # to do: specify Pydantic class schema
     structured_response = structured_llm.invoke(messages, config={"callbacks": [langfuse_handler]})
 

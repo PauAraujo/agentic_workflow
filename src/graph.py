@@ -1,11 +1,14 @@
+import io
+
+from PIL import Image
+from pathlib import Path
 from functools import partial
-from langgraph.graph import StateGraph, END
 from langchain_openai import AzureChatOpenAI
-from IPython.display import Image, display
+from langgraph.graph import StateGraph, END
 
 from .models import AssumptionState
 from .agents import select_assumptions, build_intent_card
-
+from .constants import GRAPH_DIAGRAM_PATH
 
 def build_assumption_graph(
     llm: AzureChatOpenAI,
@@ -40,13 +43,11 @@ def build_assumption_graph(
     workflow.add_edge("select_assumptions", "build_intent_card")
     workflow.add_edge("build_intent_card", END)
 
-    # Compile
     chain = workflow.compile()
 
-    # Show workflow
-    print(chain.get_graph().draw_mermaid())
-    #display(Image(chain.get_graph().draw_mermaid_png(draw_method=MermaidDrawMethod.PYPPETEER)))
-
-    #display(Image(chain.get_graph().draw_mermaid_png(max_retries=5, retry_delay=2.0)))
+    # Generate and export graph visualization
+    graph_png = chain.get_graph().draw_mermaid_png(max_retries=5, retry_delay=2.0)
+    GRAPH_DIAGRAM_PATH.write_bytes(graph_png)
+    #Image.open(io.BytesIO(graph_png)).show()
 
     return chain
