@@ -7,12 +7,14 @@ Your job:
 4. For each catalog entry that is relevant to this query, pick a value.
 5. Return a JSON array. No explanation outside JSON.
 
-Output format, strictly JSON, no extra text:
+Output format example:
 
-[
-  {{"id": "time_basis", "value": "first_received", "why": "Reason in one sentence"}},
-  {{"id": "age_dimension", "value": "age_group", "why": "Reason in one sentence"}}
-]
+{{
+  "assumptions": [
+    {{"id": "time_basis", "value": "first_received", "rationale": "Reason in one sentence"}},
+    {{"id": "age_dimension", "value": "age_group", "rationale": "Reason in one sentence"}}
+  ]
+}}
 
 Only use assumption ids and values that exist in the catalog.
 If a catalog entry is clearly irrelevant, you may omit it."""

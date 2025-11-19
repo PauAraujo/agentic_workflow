@@ -4,7 +4,7 @@ import yaml
 from typing import Any
 from pathlib import Path
 
-from src.constants import TABLE_CARDS_DIR, ASSUMPTIONS_CATALOG_FILE
+from .constants import TABLE_CARDS_DIR, ASSUMPTIONS_CATALOG_FILE
 
 def load_table_cards(base_path: Path = TABLE_CARDS_DIR) -> list[dict[str, Any]]:
     """

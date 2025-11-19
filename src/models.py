@@ -1,18 +1,27 @@
 from typing import TypedDict, Any
+from pydantic import BaseModel, Field
+
+class Assumption(BaseModel):
+    """A single assumption selected from the catalog with its chosen value."""
+    id: str = Field(..., description="Assumption id from the catalog")
+    value: str = Field(..., description="Chosen value for this assumption")
+    rationale: str = Field(..., description="Short natural language justification")
+
+class AssumptionResponse(BaseModel):
+    """Response model containing LLM-selected assumptions."""
+    assumptions: list[Assumption] = Field(..., description="Selected assumptions list")
+
+class IntentCard(BaseModel):
+    """Final intent card containing the task and selected assumptions."""
+    task: str = Field(..., description="High-level task to perform")
+    assumption_response: AssumptionResponse = Field(..., description="Assumptions selected for the task")
 
 class AssumptionState(TypedDict, total=False):
     """
     State object that flows through the assumption selection workflow.
-
-    Attributes:
-        user_query: The user's natural language query
-        table_cards: List of table metadata dictionaries
-        assumption_catalog: List of assumption catalog entries
-        assumptions: Selected assumptions with their chosen values
-        intent_card: Final output containing task and assumptions
     """
     user_query: str
     table_cards: list[dict[str, Any]]
     assumption_catalog: list[dict[str, Any]]
-    assumptions: list[dict[str, Any]]
-    intent_card: dict[str, Any]
+    assumptions: list[Assumption]
+    intent_card: IntentCard

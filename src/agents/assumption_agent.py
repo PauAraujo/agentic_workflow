@@ -1,16 +1,17 @@
 import json
 
-from typing import Any
 from langchain_openai import AzureChatOpenAI
+from langfuse.langchain import CallbackHandler
 
-from ..models import AssumptionState
+from ..llm import call_llm
+from ..models import AssumptionState, AssumptionResponse, IntentCard
 from ..prompts import prompt_factory
 from ..prompts.assumption_agent import SYSTEM_PROMPT, USER_PROMPT
 
 def select_assumptions(
     state: AssumptionState,
     llm: AzureChatOpenAI,
-    langfuse_handler
+    langfuse_handler: CallbackHandler
 ) -> AssumptionState:
     """
     Select relevant assumptions based on user query and available tables.
@@ -24,25 +25,24 @@ def select_assumptions(
         langfuse_handler: Langfuse callback handler for tracing
 
     Returns:
-        Updated state with selected assumptions added
+        Partial state update containing assumptions list
     """
-    chat_prompt = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
-    # Format prompt with state variables
-    messages = chat_prompt.format_messages(
+    prompt_template_formatted = prompt_template.format_messages(
         user_query=state["user_query"],
         table_cards=json.dumps(state["table_cards"], indent=2),
         assumption_catalog=json.dumps(state["assumption_catalog"], indent=2)
     )
 
-    # Invoke LLM with tracing --> put in separate function?
-    structured_llm = llm.with_structured_output(method='json_mode')  # to do: specify Pydantic class schema
-    structured_response = structured_llm.invoke(messages, config={"callbacks": [langfuse_handler]})
+    llm_response = call_llm(
+        llm=llm,
+        langfuse_handler=langfuse_handler,
+        messages=prompt_template_formatted,
+        schema=AssumptionResponse,
+    )
 
-    # Update and return state
-    new_state: AssumptionState = dict(state)
-    new_state["assumptions"] = structured_response
-    return new_state
+    return {"assumptions": llm_response.assumptions}
 
 
 def build_intent_card(state: AssumptionState) -> AssumptionState:
@@ -53,13 +53,12 @@ def build_intent_card(state: AssumptionState) -> AssumptionState:
         state: Current state containing user_query and assumptions
 
     Returns:
-        Updated state with intent_card added
+        Partial state update containing intent_card
     """
-    intent_card: dict[str, Any] = {
-        "task": state["user_query"],
-        "assumptions": state["assumptions"],
-    }
-
-    new_state: AssumptionState = dict(state)
-    new_state["intent_card"] = intent_card
-    return new_state
+    intent_card = IntentCard(
+        task=state["user_query"],
+        assumption_response=AssumptionResponse(
+            assumptions=state["assumptions"]
+        ),
+    )
+    return {"intent_card": intent_card}

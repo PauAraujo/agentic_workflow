@@ -5,6 +5,7 @@ from pathlib import Path
 from functools import partial
 from langchain_openai import AzureChatOpenAI
 from langgraph.graph import StateGraph, END
+from langfuse.langchain import CallbackHandler
 
 from .models import AssumptionState
 from .agents import select_assumptions, build_intent_card
@@ -12,7 +13,7 @@ from .constants import GRAPH_DIAGRAM_PATH
 
 def build_assumption_graph(
     llm: AzureChatOpenAI,
-    langfuse_handler
+    langfuse_handler: CallbackHandler
 ):
     """
     Build and compile the assumption selection workflow graph.

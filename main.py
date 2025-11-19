@@ -11,12 +11,12 @@ from src import (
     AssumptionState,
 )
 
-
 def main():
     """Run the assumptions agent workflow."""
 
     # Initialize Langfuse client (for tracking)
-    langfuse = get_client()
+    # langfuse = get_client()
+    # To use in the future for custom traces or to attach metadata, scores, or spans around non-LLM work
 
     # Get Langfuse handler and LLM
     langfuse_handler = get_langfuse_handler()
@@ -46,7 +46,7 @@ def main():
 
     # Display results
     print("\nIntent Card:")
-    print(json.dumps(result_state["intent_card"], indent=2))
+    print(json.dumps(result_state["intent_card"].model_dump(), indent=2))
 
 
 if __name__ == "__main__":

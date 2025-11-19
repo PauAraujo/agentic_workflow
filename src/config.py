@@ -6,11 +6,14 @@ from langfuse.langchain import CallbackHandler
 
 load_dotenv()
 
+
 def get_langfuse_handler():
-    """Get Langfuse callback handler for Langchain tracing."""
-    return CallbackHandler(
-        public_key=os.environ["LANGFUSE_PUBLIC_KEY"]
-    )
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    if not public_key:
+        raise RuntimeError("LANGFUSE_PUBLIC_KEY is not set")
+
+    return CallbackHandler(public_key=public_key)
+
 
 def get_llm(temperature: float = 0.7) -> AzureChatOpenAI:
     """
