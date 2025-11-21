@@ -3,36 +3,32 @@ import io
 from PIL import Image
 from pathlib import Path
 from functools import partial
-from langchain_openai import AzureChatOpenAI
 from langgraph.graph import StateGraph, END
-from langfuse.langchain import CallbackHandler
+from langchain_core.runnables import Runnable
 
 from .models import AssumptionState
+from .llm_client import OpenAILLMClient
 from .agents import select_assumptions, build_intent_card
 from .constants import GRAPH_DIAGRAM_PATH
 
-def build_assumption_graph(
-    llm: AzureChatOpenAI,
-    langfuse_handler: CallbackHandler
-):
+def build_assumption_graph(client: OpenAILLMClient) -> Runnable:
     """
     Build and compile the assumption selection workflow graph.
 
     Args:
-        llm: Language model instance to use
-        langfuse_handler: Langfuse callback handler for tracing
+        client: LLM client instance for making LLM calls
 
     Returns:
         Compiled LangGraph workflow
     """
+
     # Create workflow
     workflow = StateGraph(AssumptionState)
 
-    # Create partial functions with LLM and handler bound
+    # Create partial functions with client bound
     select_assumptions_node = partial(
         select_assumptions,
-        llm=llm,
-        langfuse_handler=langfuse_handler
+        client=client,
     ) #  shortcut to avoid writing a tiny wrapper function
 
     # Register nodes

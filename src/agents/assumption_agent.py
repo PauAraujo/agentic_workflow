@@ -1,17 +1,13 @@
 import json
 
-from langchain_openai import AzureChatOpenAI
-from langfuse.langchain import CallbackHandler
-
-from ..llm import call_llm
+from ..llm_client import OpenAILLMClient
 from ..models import AssumptionState, AssumptionResponse, IntentCard
 from ..prompts import prompt_factory
 from ..prompts.assumption_agent import SYSTEM_PROMPT, USER_PROMPT
 
 def select_assumptions(
     state: AssumptionState,
-    llm: AzureChatOpenAI,
-    langfuse_handler: CallbackHandler
+    client: OpenAILLMClient,
 ) -> AssumptionState:
     """
     Select relevant assumptions based on user query and available tables.
@@ -21,11 +17,10 @@ def select_assumptions(
 
     Args:
         state: Current state containing user_query, table_cards, and assumption_catalog
-        llm: Language model instance to use for selection
-        langfuse_handler: Langfuse callback handler for tracing
+        client: OpenAILLMClient instance for LLM calls
 
     Returns:
-        Partial state update containing assumptions list
+        Partial state update containing the selected assumptions list.
     """
     prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
@@ -34,14 +29,12 @@ def select_assumptions(
         table_cards=json.dumps(state["table_cards"], indent=2),
         assumption_catalog=json.dumps(state["assumption_catalog"], indent=2)
     )
-
-    llm_response = call_llm(
-        llm=llm,
-        langfuse_handler=langfuse_handler,
+    llm_response = client.call_llm(
         messages=prompt_template_formatted,
         schema=AssumptionResponse,
+        deployment_name="gpt-4o-mini",
+        temperature=0.0
     )
-
     return {"assumptions": llm_response.assumptions}
 
 
@@ -53,7 +46,7 @@ def build_intent_card(state: AssumptionState) -> AssumptionState:
         state: Current state containing user_query and assumptions
 
     Returns:
-        Partial state update containing intent_card
+        Partial state update containing the constructed intent_card.
     """
     intent_card = IntentCard(
         task=state["user_query"],
@@ -61,4 +54,4 @@ def build_intent_card(state: AssumptionState) -> AssumptionState:
             assumptions=state["assumptions"]
         ),
     )
-    return {"intent_card": intent_card}
+    return AssumptionState(intent_card=intent_card)
