@@ -1,7 +1,7 @@
 import json
 
-from langfuse.langchain import CallbackHandler
 from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 
 from src import (
     AssumptionState,
@@ -15,16 +15,16 @@ from src import (
 def create_llm_client() -> OpenAILLMClient:
     """Create an OpenAILLMClient with Langfuse integration."""
     settings = Settings()
-    Langfuse(
-        public_key=settings.langfuse.public_key,
-        secret_key=settings.langfuse.secret_key,
-        host=str(settings.langfuse.host),
-    )
-    handler = CallbackHandler(
-        public_key=settings.langfuse.public_key
-    )
+    handler = None
+    if settings.langfuse is not None:
+        # Initialize Langfuse (sets up global default client)
+        Langfuse(
+            public_key=settings.langfuse.public_key,
+            secret_key=settings.langfuse.secret_key,
+            host=str(settings.langfuse.host),
+        )
+        handler = CallbackHandler()
     return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)
-
 
 def main():
     """Run the assumptions agent workflow."""

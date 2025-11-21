@@ -1,4 +1,4 @@
-from pydantic import Field, AnyHttpUrl
+from pydantic import Field, AnyHttpUrl, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class EnvBaseSettings(BaseSettings):
@@ -61,6 +61,20 @@ class LangfuseSettings(EnvBaseSettings):
 class Settings(EnvBaseSettings):
     """
     Application settings combining Azure and Langfuse configurations.
+
+    Azure settings are required and loaded from environment variables.
+    Langfuse settings are optional - if LANGFUSE_* environment variables
+    are present, observability tracing will be enabled automatically.
+    Otherwise, the application runs without tracing.
     """
-    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     azure: AzureSettings = Field(default_factory=AzureSettings)
+    langfuse: LangfuseSettings | None = None
+
+    @model_validator(mode="after")
+    def load_langfuse_if_available(self) -> "Settings":
+        if self.langfuse is None:
+            try:
+                self.langfuse = LangfuseSettings()
+            except ValidationError:
+                self.langfuse = None
+        return self
