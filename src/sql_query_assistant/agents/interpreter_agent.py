@@ -1,14 +1,14 @@
 import json
 
 from ..llm_client import OpenAILLMClient
-from ..models import AssumptionState, AssumptionResponse, IntentCard
+from ..models import InterpreterState, InterpretationResponse, IntentCard
 from ..prompts import prompt_factory
-from ..prompts.assumption_agent import SYSTEM_PROMPT, USER_PROMPT
+from ..prompts.interpreter_agent import SYSTEM_PROMPT, USER_PROMPT
 
-def select_assumptions(
-    state: AssumptionState,
+def interpret_query(
+    state: InterpreterState,
     client: OpenAILLMClient,
-) -> AssumptionState:
+) -> InterpreterState:
     """
     Select relevant assumptions based on user query and available tables.
 
@@ -31,14 +31,14 @@ def select_assumptions(
     )
     llm_response = client.call_llm(
         messages=prompt_template_formatted,
-        schema=AssumptionResponse,
+        schema=InterpretationResponse,
         deployment_name="gpt-4o-mini",
         temperature=0.0
     )
     return {"assumptions": llm_response.assumptions}
 
 
-def build_intent_card(state: AssumptionState) -> AssumptionState:
+def build_intent_card(state: InterpreterState) -> InterpreterState:
     """
     Build the final intent card from selected assumptions.
 
@@ -50,8 +50,8 @@ def build_intent_card(state: AssumptionState) -> AssumptionState:
     """
     intent_card = IntentCard(
         task=state["user_query"],
-        assumption_response=AssumptionResponse(
+        assumption_response=InterpretationResponse(
             assumptions=state["assumptions"]
         ),
     )
-    return AssumptionState(intent_card=intent_card)
+    return {"intent_card": intent_card}

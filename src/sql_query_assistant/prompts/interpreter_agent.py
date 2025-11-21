@@ -11,8 +11,8 @@ Output format example:
 
 {{
   "assumptions": [
-    {{"id": "time_basis", "value": "first_received", "rationale": "Reason in one sentence"}},
-    {{"id": "age_dimension", "value": "age_group", "rationale": "Reason in one sentence"}}
+    {{"id": "time_basis", "option_value": "first_received", "rationale": "Reason in one sentence"}},
+    {{"id": "age_dimension", "option_value": "age_group", "rationale": "Reason in one sentence"}}
   ]
 }}
 

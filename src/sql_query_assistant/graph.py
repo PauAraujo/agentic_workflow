@@ -6,14 +6,14 @@ from functools import partial
 from langgraph.graph import StateGraph, END
 from langchain_core.runnables import Runnable
 
-from .models import AssumptionState
+from .models import InterpreterState
 from .llm_client import OpenAILLMClient
-from .agents import select_assumptions, build_intent_card
+from .agents import interpret_query, build_intent_card
 from .constants import GRAPH_DIAGRAM_PATH
 
-def build_assumption_graph(client: OpenAILLMClient) -> Runnable:
+def build_interpreter_graph(client: OpenAILLMClient) -> Runnable:
     """
-    Build and compile the assumption selection workflow graph.
+    Build and compile the query interpretation workflow graph.
 
     Args:
         client: LLM client instance for making LLM calls
@@ -23,21 +23,21 @@ def build_assumption_graph(client: OpenAILLMClient) -> Runnable:
     """
 
     # Create workflow
-    workflow = StateGraph(AssumptionState)
+    workflow = StateGraph(InterpreterState)
 
     # Create partial functions with client bound
-    select_assumptions_node = partial(
-        select_assumptions,
+    interpret_query_node = partial(
+        interpret_query,
         client=client,
     ) #  shortcut to avoid writing a tiny wrapper function
 
     # Register nodes
-    workflow.add_node("select_assumptions", select_assumptions_node)
+    workflow.add_node("interpret_query", interpret_query_node)
     workflow.add_node("build_intent_card", build_intent_card)
 
     # Define edges
-    workflow.set_entry_point("select_assumptions")
-    workflow.add_edge("select_assumptions", "build_intent_card")
+    workflow.set_entry_point("interpret_query")
+    workflow.add_edge("interpret_query", "build_intent_card")
     workflow.add_edge("build_intent_card", END)
 
     chain = workflow.compile()

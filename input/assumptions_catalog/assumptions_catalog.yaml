@@ -1,58 +1,34 @@
-assumptions_catalog:
-  - id: age_measure
-    label: "Preferred age measure"
-    description: "Which patient age representation to use in the query."
-    values: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
-    default: "PATIENT_AGE_GROUP_ID"
-    applicable_if:
-      tables_any_of: ["icsr.patient"]
-      columns_present: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
+- id: age_logic
+  label: "Age Selection Method"
+  trigger_keywords: ["adult", "child", "years old", "pediatric", "elderly"]
+  description: "Decide whether to use the Reported Group (safer) or Calculated Age (precise)."
+  options:
+    - option_value: "REPORTED_GROUP"
+      description: "Use PATIENT_AGE_GROUP_ID. Best for terms like 'Adult', 'Child', 'Elderly'."
+      sql_pattern: "PATIENT_AGE_GROUP_ID IN ({option_values})"
+    - option_value: "CALCULATED_YEARS"
+      description: "Use ONSET_AGE where Unit is Years. Best for 'Older than 50', 'Between 20 and 30'."
+      sql_pattern: "ONSET_AGE_TI_UNIT_ID = 1 AND ONSET_AGE {operator} {option_value}"
+  default: "REPORTED_GROUP"
 
-  - id: age_group_source
-    label: "Source of age groups"
-    description: "Whether to use the coded age group lookup or derive bands from ONSET_AGE."
-    values: ["use_lookup_table", "derive_from_onset_age"]
-    default: "use_lookup_table"
-    applicable_if:
-      tables_any_of: ["icsr.patient", "icsr.patient_age_group"]
-      columns_present: ["PATIENT_AGE_GROUP_ID"]
+- id: sex_logic
+  label: "Gender Inclusion Scope"
+  trigger_keywords: ["male", "female", "women", "men", "sex", "gender"]
+  description: "Define if analysis is strictly binary or inclusive of unknown data."
+  options:
+    - option_value: "BINARY_STRICT"
+      description: "Only include ID 1 (Male) and 2 (Female)."
+    - option_value: "INCLUDE_UNKNOWN"
+      description: "Include Nulls and NullFlavors (UNK, MSK, NASK)."
+  default: "BINARY_STRICT"
 
-  - id: age_banding
-    label: "Age banding for ONSET_AGE"
-    description: "Band definition when age_measure is ONSET_AGE."
-    values:
-      - "0_17_18_64_65_plus"
-      - "no_banding"
-    default: "0_17_18_64_65_plus"
-    applicable_if:
-      tables_any_of: ["icsr.patient"]
-      columns_present: ["ONSET_AGE"]
-
-  - id: sex_inclusion
-    label: "Sex categories to include"
-    description: "Whether to restrict analysis to Male and Female only."
-    values:
-      - "male_female_only"
-      - "all_codes"
-    default: "male_female_only"
-    applicable_if:
-      tables_any_of: ["icsr.patient", "icsr.patient_sex"]
-      columns_present: ["PATIENT_SEX_ID"]
-
-  - id: missing_age_policy
-    label: "Handling of missing age"
-    description: "How to treat patients where the chosen age measure is missing."
-    values: ["exclude_from_analysis", "keep_as_unknown_group"]
-    default: "exclude_from_analysis"
-    applicable_if:
-      tables_any_of: ["icsr.patient"]
-      columns_present: ["ONSET_AGE", "PATIENT_AGE_GROUP_ID"]
-
-  - id: counting_unit
-    label: "Counting unit"
-    description: "What unit to count in aggregations."
-    values: ["distinct_patients", "rows"]
-    default: "distinct_patients"
-    applicable_if:
-      tables_any_of: ["icsr.patient"]
-      columns_present: ["SAFETY_REPORT_ID"]
+- id: date_basis
+  label: "Temporal Basis"
+  trigger_keywords: ["2023", "last year", "received", "date"]
+  description: "Which date field drives the timeline."
+  options:
+    - option_value: "DB_ENTRY"
+      description: "Use CREATED_ON (System Date)."
+    - option_value: "EVENT_ONSET"
+      description: "Use REACTION.START_DATE (Clinical Date) - Requires Join to REACTION table."
+  default: "DB_ENTRY"

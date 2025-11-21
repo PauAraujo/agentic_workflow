@@ -4,21 +4,21 @@ from pydantic import BaseModel, Field
 class Assumption(BaseModel):
     """A single assumption selected from the catalog with its chosen value."""
     id: str = Field(..., description="Assumption id from the catalog")
-    value: str = Field(..., description="Chosen value for this assumption")
+    option_value: str = Field(..., description="Chosen value for this assumption")
     rationale: str = Field(..., description="Short natural language justification")
 
-class AssumptionResponse(BaseModel):
+class InterpretationResponse(BaseModel):
     """Response model containing LLM-selected assumptions."""
     assumptions: list[Assumption] = Field(..., description="Selected assumptions list")
 
 class IntentCard(BaseModel):
     """Final intent card containing the task and selected assumptions."""
     task: str = Field(..., description="High-level task to perform")
-    assumption_response: AssumptionResponse = Field(..., description="Assumptions selected for the task")
+    assumption_response: InterpretationResponse = Field(..., description="Assumptions selected for the task")
 
-class AssumptionState(TypedDict, total=False):
+class InterpreterState(TypedDict, total=False):
     """
-    State object that flows through the assumption selection workflow.
+    State object that flows through the query interpretation workflow.
     """
     user_query: str
     table_cards: list[dict[str, Any]]

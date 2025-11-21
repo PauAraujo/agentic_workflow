@@ -1,54 +1,65 @@
 {
-  "name": "icsr.patient",
-  "purpose": "Stores basic demographic attributes of the patient for each safety report, focused on age and sex.",
-  "granularity": "One row per patient per safety report.",
-  "primary_key": ["SAFETY_REPORT_ID"],
-  "foreign_keys": [
-    {
-      "column": "PATIENT_AGE_GROUP_ID",
-      "references": "icsr.patient_age_group"
-    },
-    {
-      "column": "PATIENT_SEX_ID",
-      "references": "icsr.patient_sex"
-    }
-  ],
+  "table_metadata": {
+    "name": "ICSR.PATIENT",
+    "synonyms": ["Subject", "Case Demographics", "Patient"],
+    "description": "Stores demographic details. Granularity: One row per Safety Report.",
+    "primary_key": ["SAFETY_REPORT_ID"]
+  },
   "columns": [
     {
       "name": "SAFETY_REPORT_ID",
-      "type": "NUMBER(15,0)",
-      "nullable": false,
-      "role": ["primary_key", "case_join_key"],
-      "description": "Identifier of the safety report. Functions as the distinct patient or case key in this PoC."
+      "type": "NUMBER",
+      "description": "Primary Key. Use for counting distinct cases."
+    },
+    {
+      "name": "PATIENT_SEX_ID",
+      "type": "NUMBER",
+      "description": "Coded gender. FK to PATIENT_SEX.",
+      "value_map": {
+        "1": "Male",
+        "2": "Female",
+        "NULL": "Unknown/Not Specified"
+      }
+    },
+    {
+      "name": "PATIENT_AGE_GROUP_ID",
+      "type": "NUMBER",
+      "description": "Coded age group. FK to PATIENT_AGE_GROUP.",
+      "value_map": {
+        "1": "Foetus",
+        "2": "Neonate (Preterm/Term)",
+        "3": "Infant",
+        "4": "Child",
+        "5": "Adolescent",
+        "6": "Adult",
+        "7": "Elderly"
+      }
     },
     {
       "name": "ONSET_AGE",
       "type": "NUMBER",
-      "nullable": true,
-      "role": ["age", "measure"],
-      "description": "Patient age at time of onset of reaction or event. Interpreted in years for this PoC."
+      "description": "Raw numeric age value. Must be paired with ONSET_AGE_TI_UNIT_ID."
     },
     {
-      "name": "PATIENT_AGE_GROUP_ID",
-      "type": "NUMBER(15,0)",
-      "nullable": true,
-      "role": ["foreign_key", "age_group"],
-      "description": "Reference to the patient age group in icsr.patient_age_group."
+      "name": "ONSET_AGE_TI_UNIT_ID",
+      "type": "NUMBER",
+      "description": "Time unit for ONSET_AGE. FK to TIME_INTERVAL.",
+      "value_map": {
+        "1": "Years",
+        "2": "Months",
+        "3": "Weeks",
+        "4": "Days",
+        "12": "Decade"
+      }
     },
     {
-      "name": "PATIENT_SEX_ID",
-      "type": "NUMBER(15,0)",
-      "nullable": true,
-      "role": ["foreign_key", "sex"],
-      "description": "Reference to the sex category in icsr.patient_sex."
+      "name": "CREATED_ON",
+      "type": "TIMESTAMP",
+      "description": "Date the record was entered into the database."
     }
   ],
-  "planning_hints": {
-    "distinct_case_key": "SAFETY_REPORT_ID",
-    "age_fields": {
-      "exact_age": "ONSET_AGE",
-      "age_group_column": "PATIENT_AGE_GROUP_ID"
-    },
-    "sex_column": "PATIENT_SEX_ID"
+  "special_handling": {
+    "age_calculation": "To filter by exact age in years, you MUST check ONSET_AGE_TI_UNIT_ID = 1 (Years). For infants/neonates, rely on PATIENT_AGE_GROUP_ID.",
+    "null_handling": "Standard NullFlavors (MSK, UNK) are handled via specific _NF_ID columns, but usually NULL in the main ID column implies missing info."
   }
 }
