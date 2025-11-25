@@ -1,30 +1,15 @@
 import json
 
-from langfuse import Langfuse
-from langfuse.langchain import CallbackHandler
 from langgraph.graph import END, StateGraph
 
 from sql_query_assistant import (
     WorkflowState,
     OpenAILLMClient,
-    Settings,
     build_interpreter_subgraph,
     load_assumption_catalog,
     load_table_cards,
 )
-
-def create_llm_client() -> OpenAILLMClient:
-    """Create an OpenAILLMClient with Langfuse integration."""
-    settings = Settings()
-    handler = None
-    if settings.langfuse is not None:
-        Langfuse(  # sets up global default client
-            public_key=settings.langfuse.public_key,
-            secret_key=settings.langfuse.secret_key,
-            host=str(settings.langfuse.host),
-        )
-        handler = CallbackHandler()
-    return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)
+from sql_query_assistant.runtime import create_llm_client
 
 
 def build_main_graph(client: OpenAILLMClient):

@@ -1,0 +1,30 @@
+user_query,age_logic,sex_logic,date_basis,sql_query,notes
+"Show me the count of cases for Adolescents and Adults broken down by sex.",REPORTED_GROUP,BINARY_STRICT,,"SELECT
+    DECODE(PATIENT_AGE_GROUP_ID, 5, 'Adolescent', 6, 'Adult', 'Other') as Age_Group,
+    DECODE(PATIENT_SEX_ID, 1, 'Male', 2, 'Female', 'Unknown') as Sex,
+    COUNT(SAFETY_REPORT_ID) as Case_Count
+FROM
+    ICSR.PATIENT
+WHERE
+    PATIENT_AGE_GROUP_ID IN (5, 6)
+    AND PATIENT_SEX_ID IN (1, 2)
+GROUP BY
+    PATIENT_AGE_GROUP_ID,
+    PATIENT_SEX_ID;","Keywords: Adolescents, Adults trigger REPORTED_GROUP. Default BINARY_STRICT for sex breakdown. Uses value_map from table cards to decode IDs (5=Adolescent, 6=Adult, 1=Male, 2=Female)."
+"List cases where the patient is a female over 65 years old.",CALCULATED_YEARS,BINARY_STRICT,,"SELECT
+    SAFETY_REPORT_ID,
+    INITIALS,
+    ONSET_AGE
+FROM
+    ICSR.PATIENT
+WHERE
+    PATIENT_SEX_ID = 2
+    AND ONSET_AGE_TI_UNIT_ID = 1
+    AND ONSET_AGE > 65;","Keywords: 'over 65 years' triggers CALCULATED_YEARS. 'female' triggers BINARY_STRICT. Critical: Must filter ONSET_AGE_TI_UNIT_ID = 1 (Years) from TIME_INTERVAL CSV. If query used 'babies under 6 months', would need Unit ID 2 (Months)."
+"Find patients with no reported age group.",REPORTED_GROUP,INCLUDE_UNKNOWN,,"SELECT
+    SAFETY_REPORT_ID,
+    INITIALS
+FROM
+    ICSR.PATIENT
+WHERE
+    PATIENT_AGE_GROUP_ID IS NULL;","Context implies checking the age group field, so REPORTED_GROUP is selected. No sex filter mentioned, so sex_logic not applicable. Query checks for NULL in PATIENT_AGE_GROUP_ID field."
