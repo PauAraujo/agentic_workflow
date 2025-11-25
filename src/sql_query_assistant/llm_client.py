@@ -1,8 +1,9 @@
 from typing import Sequence, Type, TypeVar
-from pydantic import BaseModel
-from langfuse.langchain import CallbackHandler
-from langchain_openai import AzureChatOpenAI
+
 from langchain_core.messages import BaseMessage
+from langchain_openai import AzureChatOpenAI
+from langfuse.langchain import CallbackHandler
+from pydantic import BaseModel
 
 from .config import Settings
 

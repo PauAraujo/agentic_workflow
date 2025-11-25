@@ -3,10 +3,12 @@
   trigger_keywords: ["adult", "child", "years old", "pediatric", "elderly"]
   description: "Decide whether to use the Reported Group (safer) or Calculated Age (precise)."
   options:
-    - option_value: "REPORTED_GROUP"
+    - value: "REPORTED_GROUP"
+      label: "Reported age group"
       description: "Use PATIENT_AGE_GROUP_ID. Best for terms like 'Adult', 'Child', 'Elderly'."
       sql_pattern: "PATIENT_AGE_GROUP_ID IN ({option_values})"
-    - option_value: "CALCULATED_YEARS"
+    - value: "CALCULATED_YEARS"
+      label: "Calculated age (years)"
       description: "Use ONSET_AGE where Unit is Years. Best for 'Older than 50', 'Between 20 and 30'."
       sql_pattern: "ONSET_AGE_TI_UNIT_ID = 1 AND ONSET_AGE {operator} {option_value}"
   default: "REPORTED_GROUP"
@@ -16,9 +18,11 @@
   trigger_keywords: ["male", "female", "women", "men", "sex", "gender"]
   description: "Define if analysis is strictly binary or inclusive of unknown data."
   options:
-    - option_value: "BINARY_STRICT"
+    - value: "BINARY_STRICT"
+      label: "Binary only"
       description: "Only include ID 1 (Male) and 2 (Female)."
-    - option_value: "INCLUDE_UNKNOWN"
+    - value: "INCLUDE_UNKNOWN"
+      label: "Include unknown"
       description: "Include Nulls and NullFlavors (UNK, MSK, NASK)."
   default: "BINARY_STRICT"
 
@@ -27,8 +31,10 @@
   trigger_keywords: ["2023", "last year", "received", "date"]
   description: "Which date field drives the timeline."
   options:
-    - option_value: "DB_ENTRY"
+    - value: "DB_ENTRY"
+      label: "Database entry date"
       description: "Use CREATED_ON (System Date)."
-    - option_value: "EVENT_ONSET"
+    - value: "EVENT_ONSET"
+      label: "Clinical event date"
       description: "Use REACTION.START_DATE (Clinical Date) - Requires Join to REACTION table."
   default: "DB_ENTRY"

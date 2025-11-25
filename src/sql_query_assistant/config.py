@@ -1,4 +1,4 @@
-from pydantic import Field, AnyHttpUrl, ValidationError, model_validator
+from pydantic import AnyHttpUrl, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class EnvBaseSettings(BaseSettings):

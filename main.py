@@ -2,12 +2,13 @@ import json
 
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
+from langgraph.graph import END, StateGraph
 
 from sql_query_assistant import (
-    InterpreterState,
+    WorkflowState,
     OpenAILLMClient,
     Settings,
-    build_interpreter_graph,
+    build_interpreter_subgraph,
     load_assumption_catalog,
     load_table_cards,
 )
@@ -17,14 +18,35 @@ def create_llm_client() -> OpenAILLMClient:
     settings = Settings()
     handler = None
     if settings.langfuse is not None:
-        # Initialize Langfuse (sets up global default client)
-        Langfuse(
+        Langfuse(  # sets up global default client
             public_key=settings.langfuse.public_key,
             secret_key=settings.langfuse.secret_key,
             host=str(settings.langfuse.host),
         )
         handler = CallbackHandler()
     return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)
+
+
+def build_main_graph(client: OpenAILLMClient):
+    """
+    Compose the main graph by nesting the interpreter subgraph.
+
+    Args:
+        client: LLM client instance for making LLM calls
+
+    Returns:
+        Compiled LangGraph workflow runnable for the main workflow.
+    """
+    interpreter_runnable = build_interpreter_subgraph(client)
+
+    workflow = StateGraph(WorkflowState)
+    workflow.add_node("interpreter", interpreter_runnable)
+
+    workflow.set_entry_point("interpreter")
+    workflow.add_edge("interpreter", END)
+
+    return workflow.compile()
+
 
 def main():
     """Run the query interpreter workflow."""
@@ -35,11 +57,11 @@ def main():
     llm_client = create_llm_client()
 
     print("Building workflow graph...")
-    interpreter_graph = build_interpreter_graph(llm_client)
+    main_graph = build_main_graph(llm_client)
 
     user_query = "Show me the count of cases for young Adults broken down by sex."
 
-    initial_state: InterpreterState = {
+    initial_state: WorkflowState = {
         "user_query": user_query,
         "table_cards": table_cards,
         "assumption_catalog": assumption_catalog,
@@ -48,7 +70,7 @@ def main():
     print(f"\nProcessing query: {initial_state['user_query']}")
     print("-" * 80)
 
-    result_state = interpreter_graph.invoke(initial_state)
+    result_state = main_graph.invoke(initial_state)
 
     print("\nIntent Card:")
     print(json.dumps(result_state["intent_card"].model_dump(), indent=2))

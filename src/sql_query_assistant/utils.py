@@ -1,12 +1,13 @@
-import json
 import yaml
+import json
 
-from typing import Any
 from pathlib import Path
 
-from .constants import TABLE_CARDS_DIR, ASSUMPTIONS_CATALOG_FILE
+from sql_query_assistant.constants import ASSUMPTIONS_CATALOG_FILE, TABLE_CARDS_DIR
+from sql_query_assistant.domain import AssumptionCatalogEntry, TableCard
 
-def load_table_cards(base_path: Path = TABLE_CARDS_DIR) -> list[dict[str, Any]]:
+
+def load_table_cards(base_path: Path = TABLE_CARDS_DIR) -> list[TableCard]:
     """
     Load all table cards from the specified directory.
 
@@ -14,19 +15,19 @@ def load_table_cards(base_path: Path = TABLE_CARDS_DIR) -> list[dict[str, Any]]:
         base_path: Path to the directory containing table card JSON files
 
     Returns:
-        list of table card dictionaries
+        list of validated TableCard models
     """
-    table_cards = []
+    table_cards: list[TableCard] = []
     for json_file in sorted(base_path.glob("*.json")):
         data = json.loads(json_file.read_text())
-        table_cards.append(data)
+        table_cards.append(TableCard.model_validate(data))
 
     return table_cards
 
 
 def load_assumption_catalog(
-    catalog_path: Path = ASSUMPTIONS_CATALOG_FILE
-) -> list[dict[str, Any]]:
+    catalog_path: Path = ASSUMPTIONS_CATALOG_FILE,
+) -> list[AssumptionCatalogEntry]:
     """
     Load the assumptions catalog from YAML file.
 
@@ -34,6 +35,7 @@ def load_assumption_catalog(
         catalog_path: Path to the assumptions catalog YAML file
 
     Returns:
-        Assumption catalog as a list of dictionaries
+        Assumption catalog as a list of validated models
     """
-    return yaml.safe_load(catalog_path.read_text())
+    raw_catalog = yaml.safe_load(catalog_path.read_text()) or []
+    return [AssumptionCatalogEntry.model_validate(entry) for entry in raw_catalog]
