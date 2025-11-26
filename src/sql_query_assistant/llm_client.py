@@ -1,11 +1,15 @@
-from typing import Sequence, Type, TypeVar
+import logging
+
 from pydantic import BaseModel
+from typing import Sequence, Type, TypeVar
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_openai import AzureChatOpenAI
 
 from .config import Settings
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -45,6 +49,12 @@ class OpenAILLMClient:
             Configured AzureChatOpenAI instance
         """
         callbacks = [self.langfuse_handler] if self.langfuse_handler else None
+        logger.debug(
+            "Creating AzureChatOpenAI client (deployment=%s, temp=%.2f, retries=%d)",
+            deployment_name or self.settings.azure.default_deployment_name,
+            temperature,
+            self.settings.azure.max_retries,
+        )
         return AzureChatOpenAI(
             azure_endpoint=str(self.settings.azure.openai_endpoint),
             api_version=self.settings.azure.api_version,
@@ -94,10 +104,13 @@ def create_llm_client(settings: Settings) -> OpenAILLMClient:
     """
     handler = None
     if settings.langfuse is not None:
+        logger.info("Initializing Langfuse tracing")
         Langfuse(
             public_key=settings.langfuse.public_key,
             secret_key=settings.langfuse.secret_key,
             host=str(settings.langfuse.host),
         )
         handler = CallbackHandler()
+    else:
+        logger.info("Langfuse tracing disabled (no LANGFUSE_* env vars)")
     return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)

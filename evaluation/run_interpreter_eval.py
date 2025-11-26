@@ -1,5 +1,6 @@
 import argparse
 import csv
+import logging
 
 from pathlib import Path
 from typing import Any, Dict, Iterable
@@ -17,6 +18,8 @@ from sql_query_assistant.config import Settings
 EVAL_DIR = Path(__file__).resolve().parent
 GROUND_TRUTH_CSV = EVAL_DIR / "ground_truth_examples.csv"
 EXPECTED_ASSUMPTION_IDS = ("age_logic", "sex_logic", "date_basis")
+
+logger = logging.getLogger(__name__)
 
 Expectation = Dict[str, str]
 Prediction = Dict[str, str]
@@ -174,4 +177,8 @@ def run_interpreter_evaluation() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     run_interpreter_evaluation()

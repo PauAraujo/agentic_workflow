@@ -1,4 +1,5 @@
 import json
+import logging
 
 from langgraph.graph import END, StateGraph
 
@@ -11,6 +12,8 @@ from sql_query_assistant import (
     load_table_cards,
     Settings,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def build_main_graph(client: OpenAILLMClient):
@@ -36,14 +39,19 @@ def build_main_graph(client: OpenAILLMClient):
 
 def main():
     """Run the query interpreter workflow."""
-    print("Loading table cards and assumption catalog...")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
+
+    logger.info("Loading table cards and assumption catalog...")
     settings = Settings()
     table_cards = load_table_cards(settings=settings)
     assumption_catalog = load_assumption_catalog(settings=settings)
 
     llm_client = create_llm_client(settings=settings)
 
-    print("Building workflow graph...")
+    logger.info("Building workflow graph...")
     main_graph = build_main_graph(llm_client)
 
     user_query = "Show me the count of cases for young Adults broken down by sex."
@@ -54,13 +62,11 @@ def main():
         "assumption_catalog": assumption_catalog,
     }
 
-    print(f"\nProcessing query: {initial_state['user_query']}")
-    print("-" * 80)
+    logger.info("Processing query: %s", initial_state["user_query"])
 
     result_state = main_graph.invoke(initial_state)
 
-    print("\nIntent Card:")
-    print(json.dumps(result_state["intent_card"].model_dump(), indent=2))
+    logger.info("Intent Card:\n%s", json.dumps(result_state["intent_card"].model_dump(), indent=2))
 
 
 if __name__ == "__main__":

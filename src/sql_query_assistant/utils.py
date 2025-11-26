@@ -1,10 +1,13 @@
-import json
 import yaml
+import json
+import logging
 
 from pathlib import Path
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.domain import AssumptionCatalogEntry, TableCard
+
+logger = logging.getLogger(__name__)
 
 
 def load_table_cards(
@@ -27,11 +30,14 @@ def load_table_cards(
     if base_path is None:
         base_path = settings.paths.table_cards_dir
 
+    logger.info("Loading table cards from %s", base_path)
+
     table_cards: list[TableCard] = []
     for json_file in sorted(base_path.glob("*.json")):
         data = json.loads(json_file.read_text())
         table_cards.append(TableCard.model_validate(data))
 
+    logger.info("Loaded %d table cards", len(table_cards))
     return table_cards
 
 
@@ -55,5 +61,10 @@ def load_assumption_catalog(
     if catalog_path is None:
         catalog_path = settings.paths.assumptions_catalog_file
 
+    logger.info("Loading assumptions catalog from %s", catalog_path)
+
     raw_catalog = yaml.safe_load(catalog_path.read_text()) or []
-    return [AssumptionCatalogEntry.model_validate(entry) for entry in raw_catalog]
+    catalog = [AssumptionCatalogEntry.model_validate(entry) for entry in raw_catalog]
+
+    logger.info("Loaded %d assumptions", len(catalog))
+    return catalog

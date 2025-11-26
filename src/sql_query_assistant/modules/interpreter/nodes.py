@@ -1,16 +1,20 @@
 import json
+import logging
 
+from .models import RawInterpreterResponse
+from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import OpenAILLMClient
 from sql_query_assistant.prompting import prompt_factory
 from sql_query_assistant.state import WorkflowState
-from .models import RawInterpreterResponse
-from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.domain import (
     AvailableOption,
     IntentCard,
     InterpreterResponse,
     SelectedAssumption,
 )
+
+logger = logging.getLogger(__name__)
+
 
 def interpret_query(
     state: WorkflowState,
@@ -29,6 +33,7 @@ def interpret_query(
     Returns:
         Partial state update containing the selected assumptions list.
     """
+    logger.info("Interpreting query")
     prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
     prompt_template_formatted = prompt_template.format_messages(
@@ -79,6 +84,8 @@ def interpret_query(
             )
         )
 
+    logger.info("Interpreter selected %d assumptions", len(enriched_assumptions))
+
     return {"selected_assumptions": enriched_assumptions}
 
 
@@ -96,4 +103,5 @@ def build_intent_card(state: WorkflowState) -> WorkflowState:
         task=state["user_query"],
         assumption_response=InterpreterResponse(assumption_choices=state["selected_assumptions"]),
     )
+    logger.info("Built intent card")
     return {"intent_card": intent_card}
