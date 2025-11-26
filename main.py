@@ -9,6 +9,7 @@ from sql_query_assistant import (
     create_llm_client,
     load_assumption_catalog,
     load_table_cards,
+    Settings,
 )
 
 
@@ -36,10 +37,11 @@ def build_main_graph(client: OpenAILLMClient):
 def main():
     """Run the query interpreter workflow."""
     print("Loading table cards and assumption catalog...")
-    table_cards = load_table_cards()
-    assumption_catalog = load_assumption_catalog()
+    settings = Settings()
+    table_cards = load_table_cards(settings=settings)
+    assumption_catalog = load_assumption_catalog(settings=settings)
 
-    llm_client = create_llm_client()
+    llm_client = create_llm_client(settings=settings)
 
     print("Building workflow graph...")
     main_graph = build_main_graph(llm_client)

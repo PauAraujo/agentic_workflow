@@ -80,7 +80,7 @@ class OpenAILLMClient:
         return structured_llm.invoke(messages)
 
 
-def create_llm_client() -> OpenAILLMClient:
+def create_llm_client(settings: Settings) -> OpenAILLMClient:
     """
     Create an OpenAILLMClient with optional Langfuse integration.
 
@@ -92,7 +92,6 @@ def create_llm_client() -> OpenAILLMClient:
     Returns:
         Configured OpenAILLMClient instance
     """
-    settings = Settings()
     handler = None
     if settings.langfuse is not None:
         Langfuse(

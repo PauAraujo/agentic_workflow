@@ -1,12 +1,9 @@
 import argparse
 import csv
-import os
 
 from pathlib import Path
 from typing import Any, Dict, Iterable
 from langchain_core.runnables import Runnable
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 from sql_query_assistant import (
     WorkflowState,
@@ -15,8 +12,10 @@ from sql_query_assistant import (
     load_assumption_catalog,
     load_table_cards,
 )
+from sql_query_assistant.config import Settings
 
-GROUND_TRUTH_CSV = REPO_ROOT / "evaluation" / "ground_truth_examples.csv"
+EVAL_DIR = Path(__file__).resolve().parent
+GROUND_TRUTH_CSV = EVAL_DIR / "ground_truth_examples.csv"
 EXPECTED_ASSUMPTION_IDS = ("age_logic", "sex_logic", "date_basis")
 
 Expectation = Dict[str, str]
@@ -114,7 +113,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def pick_examples(rows: list[dict[str, str]], limit: int | None, index: int | None) -> list[dict[str, str]]:
+def pick_examples(
+        rows: list[dict[str, str]],
+        limit: int | None,
+        index: int | None
+) -> list[dict[str, str]]:
     if index is not None:
         if index < 1 or index > len(rows):
             raise ValueError(f"index must be between 1 and {len(rows)}")
@@ -126,15 +129,15 @@ def pick_examples(rows: list[dict[str, str]], limit: int | None, index: int | No
 
 def run_interpreter_evaluation() -> None:
     args = parse_args()
-    os.chdir(REPO_ROOT)
 
     ground_truth_rows = load_ground_truth(GROUND_TRUTH_CSV)
     rows_to_run = pick_examples(ground_truth_rows, args.limit, args.index)
 
-    table_cards = load_table_cards()
-    assumption_catalog = load_assumption_catalog()
+    settings = Settings()
+    table_cards = load_table_cards(settings=settings)
+    assumption_catalog = load_assumption_catalog(settings=settings)
 
-    client = create_llm_client()
+    client = create_llm_client(settings=settings)
     interpreter_graph = build_interpreter_subgraph(client)
 
     shared_state: WorkflowState = {
