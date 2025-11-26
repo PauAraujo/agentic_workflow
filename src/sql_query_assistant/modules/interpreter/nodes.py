@@ -1,17 +1,16 @@
 import json
 
-from sql_query_assistant.domain import (
-    IntentCard,
-    InterpreterResponse,
-    OptionChoice,
-    RawInterpreterResponse,
-    SelectedAssumption,
-)
 from sql_query_assistant.llm_client import OpenAILLMClient
 from sql_query_assistant.prompting import prompt_factory
 from sql_query_assistant.state import WorkflowState
-
+from .models import RawInterpreterResponse
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
+from sql_query_assistant.domain import (
+    AvailableOption,
+    IntentCard,
+    InterpreterResponse,
+    SelectedAssumption,
+)
 
 def interpret_query(
     state: WorkflowState,
@@ -59,9 +58,9 @@ def interpret_query(
         matched_option = next((opt for opt in options if opt.value == selection.option_value), None)
 
         available_options = [
-            OptionChoice(
-                option_value=opt.value,
-                option_label=opt.label,
+            AvailableOption(
+                value=opt.value,
+                label=opt.label,
                 description=opt.description,
                 selected=opt.value == selection.option_value,
             )

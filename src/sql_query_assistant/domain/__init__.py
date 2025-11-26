@@ -8,10 +8,8 @@ from .input import (
 )
 # Interpreter models
 from .interpreter import (
+    AvailableOption,
     InterpreterResponse,
-    OptionChoice,
-    RawAssumptionSelection,
-    RawInterpreterResponse,
     SelectedAssumption,
 )
 # Output models
