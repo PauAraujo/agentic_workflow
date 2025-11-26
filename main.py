@@ -6,10 +6,10 @@ from sql_query_assistant import (
     WorkflowState,
     OpenAILLMClient,
     build_interpreter_subgraph,
+    create_llm_client,
     load_assumption_catalog,
     load_table_cards,
 )
-from sql_query_assistant.runtime import create_llm_client
 
 
 def build_main_graph(client: OpenAILLMClient):

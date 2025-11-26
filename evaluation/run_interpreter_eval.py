@@ -11,10 +11,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 from sql_query_assistant import (
     WorkflowState,
     build_interpreter_subgraph,
+    create_llm_client,
     load_assumption_catalog,
     load_table_cards,
 )
-from sql_query_assistant.runtime import create_llm_client
 
 GROUND_TRUTH_CSV = REPO_ROOT / "evaluation" / "ground_truth_examples.csv"
 EXPECTED_ASSUMPTION_IDS = ("age_logic", "sex_logic", "date_basis")

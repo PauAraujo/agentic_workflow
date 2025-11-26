@@ -1,9 +1,9 @@
 from typing import Sequence, Type, TypeVar
-
+from pydantic import BaseModel
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_openai import AzureChatOpenAI
-from langfuse.langchain import CallbackHandler
-from pydantic import BaseModel
 
 from .config import Settings
 
@@ -78,3 +78,27 @@ class OpenAILLMClient:
         structured_llm = llm.with_structured_output(schema=schema)
 
         return structured_llm.invoke(messages)
+
+
+def create_llm_client() -> OpenAILLMClient:
+    """
+    Create an OpenAILLMClient with optional Langfuse integration.
+
+    This is a convenience factory that handles the common initialization pattern:
+    1. Loads settings from environment variables
+    2. Initializes Langfuse if credentials are available
+    3. Returns a configured client ready for use
+
+    Returns:
+        Configured OpenAILLMClient instance
+    """
+    settings = Settings()
+    handler = None
+    if settings.langfuse is not None:
+        Langfuse(
+            public_key=settings.langfuse.public_key,
+            secret_key=settings.langfuse.secret_key,
+            host=str(settings.langfuse.host),
+        )
+        handler = CallbackHandler()
+    return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)
