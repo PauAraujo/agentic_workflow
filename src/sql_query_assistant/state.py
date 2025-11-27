@@ -3,6 +3,7 @@ from typing import TypedDict
 from sql_query_assistant.domain import (
     AssumptionCatalogEntry,
     IntentCard,
+    SQLDraft,
     SelectedAssumption,
     TableCard,
 )
@@ -26,5 +27,5 @@ class WorkflowState(TypedDict, total=False):
     selected_assumptions: list[SelectedAssumption]
     intent_card: IntentCard
 
-    # SQL Generator Output (future)
-    # generated_sql: str
+    # SQL Drafter output
+    sql_draft: SQLDraft

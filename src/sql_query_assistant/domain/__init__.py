@@ -14,3 +14,4 @@ from .interpreter import (
 )
 # Output models
 from .intent_card import IntentCard
+from .sql_draft import SQLDraft
