@@ -5,11 +5,11 @@ class SQLDraft(BaseModel):
     """Draft SQL statement produced by the sql_drafter agent."""
 
     sql: str = Field(..., description="Draft SQL statement addressing the task and assumptions")
-    rationale: str | None = Field(
-        None,
+    rationale: str = Field(
+        ...,
         description="Short explanation of how the SQL satisfies the request",
     )
-    tables_used: list[str] | None = Field(
-        None,
+    tables_used: list[str] = Field(
+        ...,
         description="Tables referenced in the draft query, if detected",
     )
