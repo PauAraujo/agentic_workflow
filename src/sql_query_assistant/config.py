@@ -23,9 +23,13 @@ class PathSettings(BaseModel):
     the derived properties keep call sites simple and consistent.
     """
     input_dir: Path = PROJECT_ROOT / "input"
+    output_dir: Path = PROJECT_ROOT / "output"
     table_cards_subdir: str = "table_cards"
     assumptions_catalog_subdir: str = "assumptions_catalog"
     assumptions_catalog_filename: str = "assumptions_catalog.yaml"
+    query_runs_filename: str = "query_runs.csv"
+    query_assumptions_filename: str = "query_assumptions.csv"
+    state_dumps_subdir: str = "state_dumps"
 
     @property
     def table_cards_dir(self) -> Path:
@@ -38,6 +42,18 @@ class PathSettings(BaseModel):
             / self.assumptions_catalog_subdir
             / self.assumptions_catalog_filename
         )
+
+    @property
+    def query_runs_file(self) -> Path:
+        return self.output_dir / self.query_runs_filename
+
+    @property
+    def query_assumptions_file(self) -> Path:
+        return self.output_dir / self.query_assumptions_filename
+
+    @property
+    def state_dumps_dir(self) -> Path:
+        return self.output_dir / self.state_dumps_subdir
 
 
 class EnvBaseSettings(BaseSettings):

@@ -29,3 +29,6 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Drafter output
     sql_draft: SQLDraft
+
+    # Persistence output
+    run_id: int
