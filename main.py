@@ -78,8 +78,6 @@ def main():
     logger.info("Intent Card:\n%s", json.dumps(result_state["intent_card"].model_dump(), indent=2))
     logger.info("SQL Draft:\n%s", json.dumps(result_state["sql_draft"].model_dump(), indent=2))
 
-    logger.info("Results saved with run_id=%s", result_state.get("run_id"))
-
 
 if __name__ == "__main__":
     main()

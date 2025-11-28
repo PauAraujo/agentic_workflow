@@ -183,7 +183,8 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
     _ensure_output_dir(output_dir)
 
     json_dir = settings.paths.state_dumps_dir
-    json_dir.mkdir(exist_ok=True)
+    # Use parents=True to allow nested subdir overrides (e.g., "runs/state_dumps")
+    json_dir.mkdir(parents=True, exist_ok=True)
 
     json_file = json_dir / JSON_FILENAME_PATTERN.format(run_id)
 
