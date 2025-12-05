@@ -10,9 +10,32 @@ from sql_query_assistant.domain import (
 )
 
 
+class DummyLLMClient:
+    "Fakes OpenAILLMClient.call_llm to avoid network calls and capture prompt data."
+
+    def __init__(self, response):
+        self.response = response
+        self.call_count = 0
+        self.last_messages = None
+        self.last_schema = None
+        self.last_deployment_name = None
+        self.last_temperature = None
+
+    def call_llm(self, messages, schema, deployment_name=None, temperature=0.0):
+        self.call_count += 1
+        self.last_messages = messages
+        self.last_schema = schema
+        self.last_deployment_name = deployment_name
+        self.last_temperature = temperature
+
+        if self.response is not None and not isinstance(self.response, schema):
+            raise TypeError(f"Response type {type(self.response)} does not match schema {schema}")
+
+        return self.response
+
 @pytest.fixture
 def dummy_settings(tmp_path):
-    """Creates dummy Settings instance for testing, using tmp_path as input_dir."""
+    """Creates dummy Settings instance for testing, using tmp_path for both input and output."""
     return Settings(
         azure=AzureSettings(
             openai_endpoint="https://example.openai.azure.com",
@@ -22,7 +45,10 @@ def dummy_settings(tmp_path):
             max_retries=1,
         ),
         langfuse=None,
-        paths=PathSettings(input_dir=tmp_path),
+        paths=PathSettings(
+            input_dir=tmp_path,
+            output_dir=tmp_path,  # Use tmp_path for output too!
+        ),
     )
 
 
