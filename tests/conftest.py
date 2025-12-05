@@ -90,6 +90,7 @@ def sample_assumption_catalog():
             id="sex_logic",
             label="Gender Inclusion Scope",
             description="Define if analysis is strictly binary or inclusive of unknown data.",
+            default="BINARY_STRICT",
             options=[
                 AssumptionOption(
                     value="BINARY_STRICT",
@@ -107,6 +108,7 @@ def sample_assumption_catalog():
             id="age_logic",
             label="Age Selection Method",
             description="Decide whether to use the Reported Group (safer) or Calculated Age (precise).",
+            default="REPORTED_GROUP",
             options=[
                 AssumptionOption(
                     value="REPORTED_GROUP",
@@ -124,6 +126,7 @@ def sample_assumption_catalog():
             id="date_basis",
             label="Temporal Basis",
             description="Which date field drives the timeline.",
+            default="DB_ENTRY",
             options=[
                 AssumptionOption(
                     value="DB_ENTRY",
@@ -182,3 +185,45 @@ def sample_raw_assumption_catalog_dict():
             ],
         }
     ]
+
+@pytest.fixture
+def complete_workflow_state(sample_table_card, sample_assumption_catalog):
+    """
+    Returns a complete WorkflowState with all fields populated.
+
+    Useful for testing persistence module which expects fully executed workflow state.
+    """
+    from sql_query_assistant.domain import IntentCard, InterpreterResponse, SelectedAssumption, SQLDraft
+
+    selected_assumption = SelectedAssumption(
+        assumption_id="sex_logic",
+        assumption_label="Gender Inclusion Scope",
+        selected_value="INCLUDE_UNKNOWN",
+        selected_label="Include unknown",
+        option_description="Include Nulls and NullFlavors (UNK, MSK, NASK).",
+        rationale="User query mentions 'all patients' suggesting inclusivity",
+        available_options=None,
+    )
+
+    intent_card = IntentCard(
+        task="Show me all patients",
+        assumption_response=InterpreterResponse(
+            assumption_choices=[selected_assumption]
+        ),
+    )
+
+    sql_draft = SQLDraft(
+        sql="SELECT * FROM ICSR.PATIENT",
+        rationale="Simple query to return all patient records",
+        tables_used=["ICSR.PATIENT"],
+    )
+
+    return {
+        "user_query": "Show me all patients",
+        "table_cards": [sample_table_card],
+        "assumption_catalog": sample_assumption_catalog,
+        "selected_assumptions": [selected_assumption],
+        "intent_card": intent_card,
+        "sql_draft": sql_draft,
+    }
+
