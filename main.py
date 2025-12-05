@@ -120,6 +120,16 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
     parser.add_argument(
+        "--render-graph",
+        action="store_true",
+        help="Render the workflow graph to PNG and exit (no nodes are executed)",
+    )
+    parser.add_argument(
+        "--render-graph-path",
+        type=Path,
+        help="Optional output path for the rendered workflow graph PNG",
+    )
+    parser.add_argument(
         "--table-cards-dir",
         type=Path,
         help="Override path to table cards directory",
@@ -147,15 +157,40 @@ def main():
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
-    user_query = args.query
-    if not user_query:
-        user_query = input("Enter your query: ").strip()
-    if not user_query:
-        logger.error("No query provided")
-        sys.exit(1)
-
     try:
         settings = Settings()
+
+        if args.render_graph:
+            output_path = args.render_graph_path or (
+                settings.paths.output_dir / "graphs" / "main_graph.png"
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            llm_client = create_llm_client(settings=settings)
+            main_graph = build_main_graph(
+                llm_client,
+                settings,
+                enable_persistence=not args.no_persist,
+            )
+
+            graph = main_graph.get_graph()
+            png_bytes = graph.draw_mermaid_png()
+            output_path.write_bytes(png_bytes)
+
+            logger.info(
+                "Workflow graph rendered to %s (persistence %s)",
+                output_path,
+                "enabled" if not args.no_persist else "disabled",
+            )
+            sys.exit(0)
+
+        user_query = args.query
+        if not user_query:
+            user_query = input("Enter your query: ").strip()
+        if not user_query:
+            logger.error("No query provided")
+            sys.exit(1)
+
         result_state = run_workflow(
             user_query=user_query,
             settings=settings,

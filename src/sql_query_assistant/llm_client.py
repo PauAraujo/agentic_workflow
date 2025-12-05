@@ -104,13 +104,16 @@ def create_llm_client(settings: Settings) -> OpenAILLMClient:
     """
     handler = None
     if settings.langfuse is not None:
-        logger.info("Initializing Langfuse tracing")
-        Langfuse(
-            public_key=settings.langfuse.public_key,
-            secret_key=settings.langfuse.secret_key,
-            host=str(settings.langfuse.host),
-        )
-        handler = CallbackHandler()
+        try:
+            logger.info("Initializing Langfuse tracing")
+            Langfuse(
+                public_key=settings.langfuse.public_key,
+                secret_key=settings.langfuse.secret_key,
+                host=str(settings.langfuse.host),
+            )
+            handler = CallbackHandler()
+        except Exception as exc:
+            logger.warning("Langfuse initialization failed, continuing without tracing: %s", exc)
     else:
         logger.info("Langfuse tracing disabled (no LANGFUSE_* env vars)")
     return OpenAILLMClient.from_settings(settings, langfuse_handler=handler)

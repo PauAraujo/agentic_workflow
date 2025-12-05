@@ -64,8 +64,7 @@ def _get_next_run_id(query_runs_file: Path) -> int:
             run_ids = [int(row[RUN_ID_COLUMN]) for row in reader if row.get(RUN_ID_COLUMN)]
             return max(run_ids) + 1 if run_ids else 1
     except Exception as e:
-        logger.warning("Could not read existing run IDs: %s. Starting from 1.", e)
-        return 1
+        raise RuntimeError(f"Failed to read existing run IDs from {query_runs_file}: {e}") from e
 
 
 def _append_to_csv(file_path: Path, row: dict[str, Any], fieldnames: list[str]) -> None:
@@ -79,6 +78,7 @@ def _append_to_csv(file_path: Path, row: dict[str, Any], fieldnames: list[str]) 
 
     Raises:
         ValueError: If row keys don't match fieldnames exactly
+        OSError: If file write fails (permissions, disk full, etc.)
     """
     # Validate schema consistency
     row_keys = set(row.keys())
@@ -95,11 +95,14 @@ def _append_to_csv(file_path: Path, row: dict[str, Any], fieldnames: list[str]) 
 
     file_exists = file_path.exists()
 
-    with open(file_path, 'a', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
+    try:
+        with open(file_path, 'a', encoding='utf-8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+    except OSError as exc:
+        raise OSError(f"Failed to write to {file_path}: {exc}") from exc
 
 
 def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
@@ -127,13 +130,9 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
     run_id = _get_next_run_id(query_runs_file)
     timestamp = datetime.now().isoformat()
 
-    # Extract data from state
-    intent_card = state.get("intent_card")
-    sql_draft = state.get("sql_draft")
-
-    if not intent_card or not sql_draft:
-        logger.warning("Missing intent_card or sql_draft in state. Skipping save.")
-        return run_id
+    # Extract required artifacts (assumed present; validated upstream)
+    intent_card = state["intent_card"]
+    sql_draft = state["sql_draft"]
 
     # Save query run
     query_run_row = {
@@ -178,6 +177,9 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
         state: Complete workflow state after execution
         settings: Settings instance containing output_dir path
         run_id: The run ID for this execution
+
+    Raises:
+        OSError: If directory creation or file write fails (permissions, disk full, etc.)
     """
     output_dir = settings.paths.output_dir
     _ensure_output_dir(output_dir)
@@ -197,7 +199,10 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
         "sql_draft": state["sql_draft"].model_dump() if state.get("sql_draft") else None,
     }
 
-    with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump(serializable_state, f, indent=2, ensure_ascii=False)
+    try:
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(serializable_state, f, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        raise OSError(f"Failed to write state JSON to {json_file}: {exc}") from exc
 
     logger.info("Saved full state JSON to %s", json_file)
