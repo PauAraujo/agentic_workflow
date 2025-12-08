@@ -1,12 +1,14 @@
 import json
 import logging
 
-from .models import RawInterpreterResponse
+from .models import RawInterpreterResponse, RawAssumptionSelection
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import OpenAILLMClient
 from sql_query_assistant.prompting import prompt_factory
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import (
+    AssumptionCatalogEntry,
+    AssumptionOption,
     AvailableOption,
     IntentCard,
     InterpreterResponse,
@@ -16,6 +18,132 @@ from sql_query_assistant.domain import (
 logger = logging.getLogger(__name__)
 
 
+def _resolve_fallback_value(
+    catalog_entry: AssumptionCatalogEntry
+) -> str:
+    """
+    Determine which option value to use when LLM's selection is invalid.
+
+    Args:
+        catalog_entry: Catalog entry with options and optional default value
+
+    Returns:
+        The catalog default if valid, otherwise the first available option.
+    """
+    first_option = catalog_entry.options[0].value
+    if catalog_entry.default:
+        # Verify the default value actually exists in options
+        if any(opt.value == catalog_entry.default for opt in catalog_entry.options):
+            return catalog_entry.default
+        else:
+            logger.warning(
+                "Catalog assumption '%s' has invalid default '%s' not found in options; using first option",
+                catalog_entry.id,
+                catalog_entry.default
+            )
+            return first_option
+    else:
+        # No default specified, use first option as fallback
+        return first_option
+
+
+def _mark_selected_option(
+    options: list[AssumptionOption],
+    selected_value: str
+) -> list[AvailableOption]:
+    """
+    Add 'selected' flags to options indicating which is currently selected.
+
+    Args:
+        options: Assumption options from assumptions catalog
+        selected_value: The option value to mark as selected
+
+    Returns:
+        List of AvailableOption with exactly one marked as selected
+    """
+    return [
+        AvailableOption(
+            value=opt.value,
+            label=opt.label,
+            description=opt.description,
+            selected=opt.value == selected_value,
+        )
+        for opt in options
+    ]
+
+
+def _validate_and_enrich_assumption(
+    selection: RawAssumptionSelection,
+    catalog_entry: AssumptionCatalogEntry
+) -> SelectedAssumption | None:
+    """
+    Validate LLM's assumption selection and enrich with catalog metadata.
+
+    Validates the selection has valid options and a resolvable value. Invalid
+    selections are skipped and logged. Valid selections are enriched with
+    labels, descriptions, and available option flags.
+
+    Args:
+        selection: Raw assumption selection from LLM
+        catalog_entry: Catalog entry with validation rules and metadata
+
+    Returns:
+        SelectedAssumption with full metadata, or None if validation fails
+    """
+    # Verify assumption has valid options
+    if not catalog_entry.options:
+        logger.warning(
+            "Assumption '%s' has no options in catalog; skipping",
+            catalog_entry.id
+        )
+        return None
+
+    selected_value = selection.option_value
+
+    # Try to match the LLM's selected value against catalog options
+    matched_option = next(
+        (opt for opt in catalog_entry.options if opt.value == selected_value),
+        None
+    )
+
+    # Handle invalid option values with fallback logic
+    if matched_option is None:
+        fallback_value = _resolve_fallback_value(catalog_entry)
+
+        logger.warning(
+            "Invalid option '%s' for assumption '%s'; falling back to '%s'",
+            selected_value,
+            catalog_entry.id,
+            fallback_value,
+        )
+
+        selected_value = fallback_value
+        matched_option = next(
+            (opt for opt in catalog_entry.options if opt.value == fallback_value),
+            None
+        )
+
+    # Final safety check - ensure we have a valid matched_option
+    if matched_option is None:
+        logger.error(
+            "Could not resolve valid option for assumption '%s' with value '%s'; skipping",
+            catalog_entry.id,
+            selected_value
+        )
+        return None
+
+    # Build and return enriched assumption with validated data
+    return SelectedAssumption(
+        assumption_id=catalog_entry.id,
+        assumption_label=catalog_entry.label,
+        selected_value=selected_value,
+        selected_label=matched_option.label,
+        option_description=matched_option.description,
+        rationale=selection.rationale,
+        available_options=_mark_selected_option(catalog_entry.options, selected_value),
+    )
+
+
 def interpret_query(
     state: WorkflowState,
     client: OpenAILLMClient,
@@ -23,16 +151,19 @@ def interpret_query(
     """
     Select and validate assumptions based on user query and available tables.
 
-    This function uses an LLM to analyze the user query, table cards, and assumption
-    catalog to determine which assumptions are relevant and what values they should have.
-    The LLM response is validated and enriched with catalog metadata to ensure data integrity.
+    Uses an LLM to analyze the user query, table cards, and assumption catalog
+    to determine which assumptions are relevant.
+    The LLM response is validated and enriched to ensure data integrity.
 
-    Validation includes:
+    Validation performed:
     - Skipping assumptions with unknown IDs not in the catalog
     - Skipping assumptions with empty or missing options (malformed catalog entries)
     - Falling back to catalog defaults when LLM returns invalid option values
-    - Validating that catalog defaults actually exist in the options list
+    - Validating that catalog defaults exist in the options list
     - Enriching selections with full metadata (labels, descriptions, available options)
+
+    All validation errors are logged with appropriate severity levels. Invalid
+    assumptions are skipped rather than propagated to prevent downstream errors.
 
     Args:
         state: Current state containing user_query, table_cards, and assumption_catalog
@@ -40,11 +171,12 @@ def interpret_query(
 
     Returns:
         Partial state update containing the validated and enriched selected_assumptions list.
-        Invalid or unresolvable assumptions are logged and skipped rather than propagated.
+        Only successfully validated assumptions are included in the result.
     """
     logger.info("Interpreting query")
-    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
+    # Build and format LLM prompt
+    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
     prompt_template_formatted = prompt_template.format_messages(
         user_query=state["user_query"],
         table_cards=json.dumps(
@@ -56,106 +188,35 @@ def interpret_query(
             indent=2,
         ),
     )
+
+    # Call LLM to get assumption selections
     llm_response = client.call_llm(
         messages=prompt_template_formatted,
         schema=RawInterpreterResponse,
         deployment_name="gpt-4o-mini",
         temperature=0.0
     )
+
+    # Build catalog lookup for validation
     catalog_by_id = {entry.id: entry for entry in state["assumption_catalog"]}
 
     enriched_assumptions: list[SelectedAssumption] = []
     for selection in llm_response.assumptions:
         # Verify assumption ID exists in catalog
-        # LLMs can hallucinate non-existent assumption IDs
         catalog_entry = catalog_by_id.get(selection.id)
         if not catalog_entry:
-            logger.warning("Interpreter returned unknown assumption id '%s'; skipping", selection.id)
-            continue
-
-        # Verify assumption has valid options
-        # A catalog entry without options is malformed and cannot be processed
-        options = catalog_entry.options
-        if not options:
             logger.warning(
-                "Assumption '%s' has no options in catalog; skipping",
-                catalog_entry.id
+                "Interpreter returned unknown assumption id '%s'; skipping",
+                selection.id
             )
             continue
 
-        # Try to match the LLM's selected value against catalog options
-        matched_option = next((opt for opt in options if opt.value == selection.option_value), None)
-        selected_value = selection.option_value
-
-        # Handle invalid option values with fallback logic
-        if matched_option is None:
-            # LLM returned an option value that doesn't exist in the catalog
-            # Use catalog default if available, otherwise use first option
-            if catalog_entry.default:
-                # Verify the default value actually exists in options
-                if any(opt.value == catalog_entry.default for opt in options):
-                    fallback_value = catalog_entry.default
-                else:
-                    # Catalog is malformed: default doesn't exist in options
-                    logger.error(
-                        "Catalog assumption '%s' has invalid default '%s' not found in options; using first option",
-                        catalog_entry.id,
-                        catalog_entry.default
-                    )
-                    fallback_value = options[0].value
-            else:
-                # No default specified, use first option as fallback
-                fallback_value = options[0].value
-
-            # Log the fallback only if we're actually changing the value
-            if selected_value != fallback_value:
-                logger.warning(
-                    "Invalid option '%s' for assumption '%s'; falling back to '%s'",
-                    selected_value,
-                    catalog_entry.id,
-                    fallback_value,
-                )
-
-            selected_value = fallback_value
-            matched_option = next((opt for opt in options if opt.value == selected_value), None)
-
-        # Final safety check - ensure we have a valid matched_option
-        # This should never happen after the fixes above, but guards against edge cases
-        if matched_option is None:
-            logger.error(
-                "Could not resolve valid option for assumption '%s' with value '%s'; skipping",
-                catalog_entry.id,
-                selected_value
-            )
-            continue
-
-        # Build the list of available options with selection flags
-        # Mark which option is currently selected for UI display
-        available_options = [
-            AvailableOption(
-                value=opt.value,
-                label=opt.label,
-                description=opt.description,
-                selected=opt.value == selected_value,
-            )
-            for opt in options
-        ] or None
-
-        # Create the enriched assumption with validated data
-        enriched_assumptions.append(
-            SelectedAssumption(
-                assumption_id=catalog_entry.id,
-                assumption_label=catalog_entry.label,
-                selected_value=selected_value,
-                selected_label=matched_option.label,
-                option_description=matched_option.description,
-                rationale=selection.rationale,
-                available_options=available_options,
-            )
-        )
+        # Validate and enrich this assumption
+        enriched = _validate_and_enrich_assumption(selection, catalog_entry)
+        if enriched:
+            enriched_assumptions.append(enriched)
 
     logger.info("Interpreter selected %d assumptions", len(enriched_assumptions))
-
     return {"selected_assumptions": enriched_assumptions}
 
 
