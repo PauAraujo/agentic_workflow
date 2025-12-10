@@ -14,14 +14,14 @@ These assumptions will disambiguate the query for SQL generation.
 # Output Format
 Return ONLY valid JSON (no markdown, no explanation outside the JSON):
 
-{
+{{
 "assumptions": [
-  {"id": "<exact_id_from_catalog>", "option_value": "<exact_value_from_catalog>", "rationale": "<one sentence>"}
+  {{"id": "<exact_id_from_catalog>", "option_value": "<exact_value_from_catalog>", "rationale": "<one sentence>"}}
 ]
-}
+}}
 """
 
-# TODO:  Add input validation or escape user content (prompt injection vulnerability)
+# TODO: Add input validation or escape user content (prompt injection vulnerability)
 USER_PROMPT = """User query:
 {user_query}
 

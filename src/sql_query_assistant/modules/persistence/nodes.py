@@ -2,7 +2,6 @@ import logging
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.state import WorkflowState
-
 from .service import save_full_state_json, save_workflow_results
 
 logger = logging.getLogger(__name__)

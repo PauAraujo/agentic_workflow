@@ -55,6 +55,7 @@ def _get_next_run_id(query_runs_file: Path) -> int:
     Returns:
         Next run ID (1 if file doesn't exist, otherwise max_id + 1)
     """
+    # TODO: reads the CSV without locking to pick max(run_id)+1, so concurrent writers can duplicate IDs (race condition)
     if not query_runs_file.exists():
         return 1
 
@@ -127,7 +128,7 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
     query_assumptions_file = settings.paths.query_assumptions_file
 
     # Get next run ID
-    run_id = _get_next_run_id(query_runs_file)
+    run_id = _get_next_run_id(query_runs_file) # TODO: ensure run_id generation is atomic to prevent duplicate IDs across parallel runs
     timestamp = datetime.now().isoformat()
 
     # Extract required artifacts (assumed present; validated upstream)

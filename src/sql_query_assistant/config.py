@@ -30,6 +30,8 @@ class PathSettings(BaseModel):
     query_runs_filename: str = "query_runs.csv"
     query_assumptions_filename: str = "query_assumptions.csv"
     state_dumps_subdir: str = "state_dumps"
+    db_subdir: str = "db"
+    db_filename: str = "patients.db"
 
     @property
     def table_cards_dir(self) -> Path:
@@ -54,6 +56,10 @@ class PathSettings(BaseModel):
     @property
     def state_dumps_dir(self) -> Path:
         return self.output_dir / self.state_dumps_subdir
+
+    @property
+    def database_file(self) -> Path:
+        return self.input_dir / self.db_subdir / self.db_filename
 
 
 class EnvBaseSettings(BaseSettings):
@@ -132,5 +138,5 @@ class Settings(EnvBaseSettings):
             try:
                 self.langfuse = LangfuseSettings()
             except ValidationError:
-                self.langfuse = None
+                self.langfuse = None # TODO: add logging when Langfuse is disabled due to config issues
         return self
