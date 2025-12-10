@@ -6,10 +6,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from sql_query_assistant.domain import AssumptionCatalogEntry, AssumptionOption
-from sql_query_assistant.utils import load_assumption_catalog, load_table_cards
+from sql_query_assistant.utils.io_utils import load_assumption_catalog, load_table_cards
 
-
-# Table card loader tests =================================================
 
 def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_card_dict):
     """Load a single valid table card JSON file into a fully populated TableCard model."""
@@ -121,8 +119,6 @@ def test_load_table_cards_with_extra_fields(tmp_path, dummy_settings, sample_raw
     assert cards[0].table_metadata.name == "ICSR.PATIENT"
 
 
-# Assumption catalog loader tests  =================================================
-
 def test_load_assumption_catalog_reads_yaml(tmp_path, dummy_settings, sample_raw_assumption_catalog_dict):
     """Load a valid YAML catalog file into AssumptionCatalogEntry and AssumptionOption models."""
     catalog_path = tmp_path / "assumptions.yaml"
@@ -233,4 +229,3 @@ def test_load_assumption_catalog_with_extra_fields(tmp_path, dummy_settings, sam
 
     assert len(loaded) == 1
     assert loaded[0].id == "sex_logic"
-

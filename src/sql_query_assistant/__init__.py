@@ -9,4 +9,4 @@ from .modules.persistence import (
     save_workflow_results,
 )
 from .state import WorkflowState
-from .utils import load_assumption_catalog, load_table_cards
+from .utils.io_utils import load_assumption_catalog, load_table_cards

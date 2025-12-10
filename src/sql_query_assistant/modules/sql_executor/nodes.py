@@ -5,6 +5,7 @@ import sqlite3
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import QueryResult
 from sql_query_assistant.config import Settings
+from sql_query_assistant.utils import TableMapper
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,12 @@ def execute_sql(state: WorkflowState, settings: Settings) -> WorkflowState:
         logger.error("Database file not found: %s", db_path)
         return _create_error_result(f"Database file not found: {db_path}")
 
+    # Convert Oracle SQL (ICSR.PATIENT) to SQLite format (ICSR_PATIENT)
+    sqlite_sql = TableMapper.convert_sql_to_sqlite(sql_draft.sql)
+
     logger.info("Executing SQL against database: %s", db_path)
-    logger.debug("SQL: %s", sql_draft.sql)
+    logger.debug("Oracle SQL: %s", sql_draft.sql)
+    logger.debug("SQLite SQL: %s", sqlite_sql)
 
     try:
         with sqlite3.connect(db_path) as conn:
@@ -60,7 +65,7 @@ def execute_sql(state: WorkflowState, settings: Settings) -> WorkflowState:
             cursor = conn.cursor()
 
             start_time = time.perf_counter()
-            cursor.execute(sql_draft.sql)
+            cursor.execute(sqlite_sql)
             execution_time_ms = (time.perf_counter() - start_time) * 1000
 
             rows = cursor.fetchall()
