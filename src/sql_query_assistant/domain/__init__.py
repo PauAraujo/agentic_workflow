@@ -9,9 +9,10 @@ from .input import (
 # Interpreter models
 from .interpreter import (
     AvailableOption,
-    InterpreterResponse,
     SelectedAssumption,
+    InterpreterResponse,
 )
 # Output models
 from .intent_card import IntentCard
 from .sql_draft import SQLDraft
+from .query_result import QueryResult

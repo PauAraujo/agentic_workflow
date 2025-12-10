@@ -1,11 +1,12 @@
 from typing import TypedDict
 
 from sql_query_assistant.domain import (
+    TableCard,
     AssumptionCatalogEntry,
+    SelectedAssumption,
     IntentCard,
     SQLDraft,
-    SelectedAssumption,
-    TableCard,
+    QueryResult,
 )
 
 
@@ -29,6 +30,9 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Drafter output
     sql_draft: SQLDraft
+
+    # SQL Executor output
+    query_result: QueryResult
 
     # Persistence output
     run_id: int

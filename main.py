@@ -13,6 +13,7 @@ from sql_query_assistant import (
     build_interpreter_subgraph,
     build_persistence_subgraph,
     build_sql_drafter_subgraph,
+    build_sql_executor_subgraph,
     create_llm_client,
     load_assumption_catalog,
     load_table_cards,
@@ -39,21 +40,24 @@ def build_main_graph(
     """
     interpreter_runnable = build_interpreter_subgraph(client)
     sql_drafter_runnable = build_sql_drafter_subgraph(client)
+    sql_executor_runnable = build_sql_executor_subgraph(settings)
 
     workflow = StateGraph(WorkflowState)
     workflow.add_node("interpreter", interpreter_runnable)
     workflow.add_node("sql_drafter", sql_drafter_runnable)
+    workflow.add_node("sql_executor", sql_executor_runnable)
 
     workflow.set_entry_point("interpreter")
     workflow.add_edge("interpreter", "sql_drafter")
+    workflow.add_edge("sql_drafter", "sql_executor")
 
     if enable_persistence:
         persistence_runnable = build_persistence_subgraph(settings)
         workflow.add_node("persistence", persistence_runnable)
-        workflow.add_edge("sql_drafter", "persistence")
+        workflow.add_edge("sql_executor", "persistence")
         workflow.add_edge("persistence", END)
     else:
-        workflow.add_edge("sql_drafter", END)
+        workflow.add_edge("sql_executor", END)
 
     return workflow.compile()
 
@@ -198,6 +202,19 @@ def main():
             assumptions_path=args.assumptions_file,
             enable_persistence=not args.no_persist,
         )
+        query_result = result_state.get("query_result")
+        if query_result:
+            if query_result.success:
+                logger.info(
+                    "SQL execution succeeded: %d rows, %.2f ms, columns=%s",
+                    query_result.row_count,
+                    query_result.execution_time_ms or 0.0,
+                    query_result.column_names,
+                    )
+                # show a small sample
+                logger.debug("First rows: %s", query_result.rows[:3])
+            else:
+                logger.error("SQL execution failed: %s", query_result.error_message)
     except Exception as exc:
         logger.exception("Workflow failed: %s", exc)
         sys.exit(2)
