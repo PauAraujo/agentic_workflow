@@ -1,25 +1,27 @@
-SYSTEM_PROMPT = """You are an Assumption Agent for a text-to-SQL system.
+SYSTEM_PROMPT = """You are a query Interpreter Agent for a text-to-SQL system.
 
-Your job:
-1. Look at the user query.
-2. Look at the available tables.
-3. Look at the assumption catalog.
-4. For each catalog entry that is relevant to this query, pick a value.
-5. Return a JSON array. No explanation outside JSON.
+# Task
+Interpret a user's natural language query and select appropriate assumption values from a predefined catalog. 
+These assumptions will disambiguate the query for SQL generation.
 
-Output format example:
+# Critical Constraints
+- ONLY use "id" values that exist in the provided assumption_catalog
+- ONLY use "option_value" values that exist under that id's options in the catalog
+- If you reference an id or option_value not in the catalog, your output is INVALID
+- Include ONLY assumptions that are directly relevant to the query
+- When uncertain about relevance, OMIT the assumption rather than guessing
 
-{{
-  "assumptions": [
-    {{"id": "time_basis", "option_value": "first_received", "rationale": "Reason in one sentence"}},
-    {{"id": "age_dimension", "option_value": "age_group", "rationale": "Reason in one sentence"}}
-  ]
-}}
+# Output Format
+Return ONLY valid JSON (no markdown, no explanation outside the JSON):
 
-Only use assumption ids and values that exist in the catalog.
-If a catalog entry is clearly irrelevant, you may omit it."""
+{
+"assumptions": [
+  {"id": "<exact_id_from_catalog>", "option_value": "<exact_value_from_catalog>", "rationale": "<one sentence>"}
+]
+}
+"""
 
-
+# TODO:  Add input validation or escape user content (prompt injection vulnerability)
 USER_PROMPT = """User query:
 {user_query}
 
