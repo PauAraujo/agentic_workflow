@@ -1,10 +1,9 @@
-import streamlit as st
-
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = ROOT / "output"
-HEADER_GRAPH_PATH = OUTPUT_DIR / "graphs" / "header.jpg"
+import streamlit as st
+
+from app.config import HEADER_GRAPH_PATH
+
 
 def render_header_graph() -> None:
     """
