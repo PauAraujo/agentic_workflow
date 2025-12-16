@@ -32,3 +32,10 @@ old/
 
 # Unstructured notes
 REMINDERS.md
+
+# Evaluation reports (may contain sensitive query results)
+evaluation/reports/
+
+# Temporary files
+*.tmp
+*.log
