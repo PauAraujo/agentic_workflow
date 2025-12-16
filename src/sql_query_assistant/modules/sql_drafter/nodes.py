@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 def draft_sql(
     state: WorkflowState,
     client: OpenAILLMClient,
+    settings,
 ) -> WorkflowState:
     """
     Draft a SQL query using the intent card and available table metadata.
@@ -21,14 +22,17 @@ def draft_sql(
     Args:
         state: Current state containing intent_card and table_cards.
         client: OpenAILLMClient instance for LLM calls.
+        settings: Settings instance for target SQL dialect configuration.
 
     Returns:
         Partial state update containing the SQLDraft.
     """
-    logger.info("Drafting SQL query")
+    target_dialect = settings.target_sql_dialect
+    logger.info("Drafting SQL query (target dialect: %s)", target_dialect)
     prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
     prompt_messages = prompt_template.format_messages(
+        target_dialect=target_dialect,
         intent_card=json.dumps(state["intent_card"].model_dump(), indent=2),
         table_cards=json.dumps(
             [card.model_dump() for card in state["table_cards"]],
@@ -47,7 +51,8 @@ def draft_sql(
         sql=llm_response.sql,
         rationale=llm_response.rationale,
         tables_used=llm_response.tables_used,
+        dialect=target_dialect,
     )
-    logger.info("SQL draft generated")
+    logger.info("SQL draft generated (dialect: %s)", target_dialect)
 
     return {"sql_draft": sql_draft}

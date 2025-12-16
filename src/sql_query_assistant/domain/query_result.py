@@ -10,3 +10,7 @@ class QueryResult(BaseModel):
     rows: list[dict] = Field(default_factory=list, description="Query result rows as dictionaries")
     error_message: str | None = Field(None, description="Error message if execution failed")
     execution_time_ms: float | None = Field(None, description="Query execution time in milliseconds")
+    validation_failed: bool = Field(
+        default=False,
+        description="True if execution was blocked due to validation failure"
+    )

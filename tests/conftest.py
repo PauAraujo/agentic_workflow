@@ -216,6 +216,7 @@ def complete_workflow_state(sample_table_card, sample_assumption_catalog):
         sql="SELECT * FROM ICSR.PATIENT",
         rationale="Simple query to return all patient records",
         tables_used=["ICSR.PATIENT"],
+        dialect="sqlite",
     )
 
     return {

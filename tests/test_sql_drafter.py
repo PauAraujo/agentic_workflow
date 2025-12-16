@@ -49,7 +49,7 @@ def intent_card(sample_assumption_catalog):
     )
 
 
-def test_draft_sql_returns_sql_draft(intent_card, sample_table_card):
+def test_draft_sql_returns_sql_draft(intent_card, sample_table_card, dummy_settings):
     """Wrap the structured LLM response into an SQLDraft and persist it in workflow state."""
     client = _make_sql_drafter_client(
         sql="SELECT COUNT(DISTINCT SAFETY_REPORT_ID) FROM ICSR.PATIENT WHERE PATIENT_SEX_ID = 1;",
@@ -58,7 +58,7 @@ def test_draft_sql_returns_sql_draft(intent_card, sample_table_card):
     )
     state = _make_drafter_state(intent_card, sample_table_card)
 
-    result = draft_sql(state, client)
+    result = draft_sql(state, client, dummy_settings)
 
     assert "sql_draft" in result
     sql_draft = result["sql_draft"]
@@ -69,7 +69,7 @@ def test_draft_sql_returns_sql_draft(intent_card, sample_table_card):
     assert sql_draft.rationale == "Counts unique cases limited to male sex code."
 
 
-def test_draft_sql_formats_prompt(intent_card, sample_table_card):
+def test_draft_sql_formats_prompt(intent_card, sample_table_card, dummy_settings):
     """Verify prompt structure includes intent card and table metadata with correct LLM parameters."""
     client = _make_sql_drafter_client(
         sql="SELECT 1;",
@@ -78,7 +78,7 @@ def test_draft_sql_formats_prompt(intent_card, sample_table_card):
     )
     state = _make_drafter_state(intent_card, sample_table_card)
 
-    draft_sql(state, client)
+    draft_sql(state, client, dummy_settings)
 
     # Verify two-message prompt structure
     assert client.last_messages is not None
@@ -89,6 +89,7 @@ def test_draft_sql_formats_prompt(intent_card, sample_table_card):
 
     # Verify prompt content
     assert "SQL Drafting Agent" in system_message.content
+    assert "Target SQL Dialect" in human_message.content
     assert intent_card.task in human_message.content
     assert "ICSR.PATIENT" in human_message.content
     assert intent_card.assumption_response.assumption_choices[0].assumption_id in human_message.content

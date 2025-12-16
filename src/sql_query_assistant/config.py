@@ -131,6 +131,16 @@ class Settings(EnvBaseSettings):
     azure: AzureSettings = Field(default_factory=AzureSettings)
     langfuse: LangfuseSettings | None = None
     paths: PathSettings = Field(default_factory=PathSettings)
+    target_sql_dialect: str = Field(
+        validation_alias="TARGET_SQL_DIALECT",
+        default="sqlite",
+        description="Target SQL dialect for query generation (e.g., 'sqlite', 'oracle', 'postgres')"
+    )
+    max_repair_attempts: int = Field(
+        validation_alias="MAX_REPAIR_ATTEMPTS",
+        default=3,
+        description="Maximum number of SQL repair attempts when validation fails"
+    )
 
     @model_validator(mode="after")
     def load_langfuse_if_available(self) -> "Settings":
