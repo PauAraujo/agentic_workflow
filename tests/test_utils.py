@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from sql_query_assistant.domain import AssumptionCatalogEntry, AssumptionOption
-from sql_query_assistant.utils.io_utils import load_assumption_catalog, load_table_cards
+from sql_query_assistant.utils import load_assumption_catalog, load_table_cards
 
 
 def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_card_dict):
