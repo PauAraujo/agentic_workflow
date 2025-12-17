@@ -4,108 +4,12 @@ import logging
 import argparse
 
 from pathlib import Path
-from langgraph.graph import END, StateGraph
 
-from sql_query_assistant import (
-    OpenAILLMClient,
-    Settings,
-    WorkflowState,
-    build_interpreter_subgraph,
-    build_persistence_subgraph,
-    build_sql_drafter_subgraph,
-    build_sql_executor_subgraph,
-    create_llm_client,
-    load_assumption_catalog,
-    load_table_cards,
-)
+from sql_query_assistant import Settings, WorkflowState, create_llm_client
+from sql_query_assistant.workflow import build_main_graph, run_workflow
+
 
 logger = logging.getLogger(__name__)
-
-
-def build_main_graph(
-    client: OpenAILLMClient,
-    settings: Settings,
-    enable_persistence: bool = True,
-):
-    """
-    Compose the main graph by nesting the interpreter subgraph.
-
-    Args:
-        client: LLM client instance for making LLM calls
-        settings: Settings instance for downstream modules (e.g., persistence)
-        enable_persistence: Whether to include persistence in the workflow
-
-    Returns:
-        Compiled LangGraph workflow runnable for the main workflow.
-    """
-    interpreter_runnable = build_interpreter_subgraph(client)
-    sql_drafter_runnable = build_sql_drafter_subgraph(client)
-    sql_executor_runnable = build_sql_executor_subgraph(settings)
-
-    workflow = StateGraph(WorkflowState)
-    workflow.add_node("interpreter", interpreter_runnable)
-    workflow.add_node("sql_drafter", sql_drafter_runnable)
-    workflow.add_node("sql_executor", sql_executor_runnable)
-
-    workflow.set_entry_point("interpreter")
-    workflow.add_edge("interpreter", "sql_drafter")
-    workflow.add_edge("sql_drafter", "sql_executor")
-
-    if enable_persistence:
-        persistence_runnable = build_persistence_subgraph(settings)
-        workflow.add_node("persistence", persistence_runnable)
-        workflow.add_edge("sql_executor", "persistence")
-        workflow.add_edge("persistence", END)
-    else:
-        workflow.add_edge("sql_executor", END)
-
-    return workflow.compile()
-
-
-def run_workflow(
-    user_query: str,
-    settings: Settings,
-    table_cards_path: Path | None = None,
-    assumptions_path: Path | None = None,
-    enable_persistence: bool = True,
-) -> WorkflowState:
-    """
-    Run the end-to-end workflow for a single query.
-
-    Args:
-        user_query: Natural language query to convert to SQL.
-        settings: Settings instance for LLM + persistence.
-        table_cards_path: Optional override for table cards directory.
-        assumptions_path: Optional override for assumptions catalog file.
-        enable_persistence: Whether to run the persistence step.
-
-    Returns:
-        Final workflow state containing intent card, SQL draft, and optional run_id.
-    """
-    logger.info("Loading table cards and assumption catalog...")
-    table_cards = load_table_cards(settings=settings, base_path=table_cards_path)
-    assumption_catalog = load_assumption_catalog(
-        settings=settings,
-        catalog_path=assumptions_path,
-    )
-
-    llm_client = create_llm_client(settings=settings)
-
-    logger.info("Building workflow graph...")
-    main_graph = build_main_graph(
-        llm_client,
-        settings,
-        enable_persistence=enable_persistence,
-    )
-
-    initial_state: WorkflowState = {
-        "user_query": user_query,
-        "table_cards": table_cards,
-        "assumption_catalog": assumption_catalog,
-    }
-
-    logger.info("Processing query: %s", initial_state["user_query"])
-    return main_graph.invoke(initial_state)
 
 
 def parse_args() -> argparse.Namespace:
@@ -149,6 +53,52 @@ def parse_args() -> argparse.Namespace:
         help="Run without writing outputs",
     )
     return parser.parse_args()
+
+
+def log_workflow_results(result_state: WorkflowState) -> None:
+    """
+    Log validation, repair, and execution results from workflow state.
+
+    Args:
+        result_state: Final workflow state containing results to log.
+    """
+    # Log validation results
+    validation_result = result_state.get("validation_result")
+    if validation_result:
+        if validation_result.is_valid:
+            logger.info("SQL validation: PASSED")
+        else:
+            logger.warning("SQL validation: FAILED")
+            logger.warning("Validation errors: %s", validation_result.get_error_summary())
+
+    # Log repair attempts and history
+    repair_attempts = result_state.get("repair_attempts", 0)
+    if repair_attempts > 0:
+        logger.info("SQL repair attempts: %d", repair_attempts)
+        repair_history = result_state.get("repair_history", [])
+        if repair_history:
+            logger.debug("Repair history: %d SQL drafts generated", len(repair_history))
+            for i, draft in enumerate(repair_history, 1):
+                logger.debug("  Repair attempt %d SQL: %s", i, draft.sql[:100])
+
+    # Log execution results
+    query_result = result_state.get("query_result")
+    if query_result:
+        if query_result.success:
+            logger.info(
+                "SQL execution succeeded: %d rows, %.2f ms, columns=%s",
+                query_result.row_count,
+                query_result.execution_time_ms or 0.0,
+                query_result.column_names,
+            )
+            # show a small sample
+            logger.debug("First rows: %s", query_result.rows[:3])
+        else:
+            if query_result.validation_failed:
+                logger.error("Execution blocked: %s", query_result.error_message)
+                logger.error("SQL draft with validation errors is available in state dump")
+            else:
+                logger.error("SQL execution failed: %s", query_result.error_message)
 
 
 def main():
@@ -202,19 +152,8 @@ def main():
             assumptions_path=args.assumptions_file,
             enable_persistence=not args.no_persist,
         )
-        query_result = result_state.get("query_result")
-        if query_result:
-            if query_result.success:
-                logger.info(
-                    "SQL execution succeeded: %d rows, %.2f ms, columns=%s",
-                    query_result.row_count,
-                    query_result.execution_time_ms or 0.0,
-                    query_result.column_names,
-                    )
-                # show a small sample
-                logger.debug("First rows: %s", query_result.rows[:3])
-            else:
-                logger.error("SQL execution failed: %s", query_result.error_message)
+
+        log_workflow_results(result_state)
     except Exception as exc:
         logger.exception("Workflow failed: %s", exc)
         sys.exit(2)
