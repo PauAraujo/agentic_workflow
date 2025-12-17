@@ -2,7 +2,7 @@ import csv
 import json
 import pytest
 
-from sql_query_assistant.modules.persistence.service import (
+from sql_query_assistant.persistence.service import (
     _get_next_run_id,
     _append_to_csv,
     save_workflow_results,

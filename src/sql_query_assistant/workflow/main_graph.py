@@ -1,5 +1,6 @@
 import logging
 
+from functools import partial
 from langgraph.graph import END, StateGraph
 
 from ..config import Settings
@@ -7,83 +8,78 @@ from ..domain import QueryResult
 from ..llm_client import OpenAILLMClient
 from ..state import WorkflowState
 from ..modules.interpreter import build_interpreter_subgraph
-from ..modules.persistence import build_persistence_subgraph
-from ..modules.sql_drafter import build_sql_drafter_subgraph
-from ..modules.sql_validator import build_sql_validator_subgraph
-from ..modules.sql_repairer import build_sql_repairer_subgraph
-from ..modules.sql_executor import build_sql_executor_subgraph
+from ..modules.sql_drafter import draft_sql
+from ..modules.sql_validator import validate_sql
+from ..modules.sql_repairer import repair_sql
+from ..modules.sql_executor import execute_sql
+from ..persistence import persist_results
 
 
 logger = logging.getLogger(__name__)
 
 
-def create_validation_failed_node():
+def validation_failed_node(state: WorkflowState) -> WorkflowState:
     """
-    Create a node that surfaces validation failure without executing SQL.
-
-    Returns:
-        A node function that creates a QueryResult indicating validation failure.
-    """
-    def validation_failed_node(state: WorkflowState) -> WorkflowState:
-        validation_result = state.get("validation_result")
-        error_summary = (
-            validation_result.get_error_summary()
-            if validation_result
-            else "Validation failed (no details available)"
-        )
-        return {
-            "query_result": QueryResult(
-                success=False,
-                row_count=0,
-                error_message=f"Validation failed: {error_summary}",
-                validation_failed=True,
-            )
-        }
-    return validation_failed_node
-
-
-def create_routing_function(settings: Settings):
-    """
-    Create a routing function that directs flow after validation.
+    Node that surfaces validation failure without executing SQL.
 
     Args:
+        state: Current workflow state containing validation_result.
+
+    Returns:
+        Partial state update with failed QueryResult.
+    """
+    validation_result = state.get("validation_result")
+    error_summary = (
+        validation_result.get_error_summary()
+        if validation_result
+        else "Validation failed (no details available)"
+    )
+    return {
+        "query_result": QueryResult(
+            success=False,
+            row_count=0,
+            error_message=f"Validation failed: {error_summary}",
+            validation_failed=True,
+        )
+    }
+
+
+def route_after_validation(state: WorkflowState, settings: Settings) -> str:
+    """
+    Route based on validation result and repair attempts.
+
+    Args:
+        state: Current workflow state containing validation_result and repair_attempts.
         settings: Settings instance containing max_repair_attempts configuration.
 
     Returns:
-        A routing function that determines next node based on validation results.
+        Next node name:
+        - "sql_executor" if validation passed
+        - "sql_repairer" if validation failed and can retry
+        - "validation_failed" if validation failed and max retries exceeded
     """
-    def route_after_validation(state: WorkflowState) -> str:
-        """
-        Route based on validation result and repair attempts.
+    validation_result = state.get("validation_result")
+    repair_attempts = state.get("repair_attempts", 0)
 
-        Returns:
-            - "sql_executor" if validation passed
-            - "sql_repairer" if validation failed and can retry
-            - "validation_failed" if validation failed and max retries exceeded
-        """
-        validation_result = state.get("validation_result")
-        repair_attempts = state.get("repair_attempts", 0)
+    if not validation_result:
+        logger.warning("No validation result found; treating as failure")
+        return "validation_failed"
 
-        if not validation_result:
-            logger.warning("No validation result found; treating as failure")
-            return "validation_failed"
+    if validation_result.is_valid:
+        logger.info("Validation passed; proceeding to executor")
+        return "sql_executor"
 
-        if validation_result.is_valid:
-            logger.info("Validation passed; proceeding to executor")
-            return "sql_executor"
+    # Validation failed
+    if repair_attempts >= settings.max_repair_attempts:
+        logger.warning(
+            "Validation failed after %d repair attempts; reporting failure",
+            repair_attempts
+        )
+        return "validation_failed"
 
-        # Validation failed
-        if repair_attempts >= settings.max_repair_attempts:
-            logger.warning(
-                "Validation failed after %d repair attempts; reporting failure",
-                repair_attempts
-            )
-            return "validation_failed"
-
-        logger.info("Validation failed; attempting repair (attempt %d/%d)",
-                   repair_attempts + 1, settings.max_repair_attempts)
-        return "sql_repairer"
-    return route_after_validation
+    logger.info("Validation failed; attempting repair (attempt %d/%d)",
+               repair_attempts + 1, settings.max_repair_attempts)
+    return "sql_repairer"
 
 
 def build_main_graph(
@@ -116,22 +112,22 @@ def build_main_graph(
     Returns:
         The executable LangGraph workflow (compiled StateGraph) ready for invocation
     """
+    # Build interpreter subgraph (multi-node)
     interpreter_runnable = build_interpreter_subgraph(client)
-    sql_drafter_runnable = build_sql_drafter_subgraph(client, settings)
-    sql_validator_runnable = build_sql_validator_subgraph(settings)
-    sql_repairer_runnable = build_sql_repairer_subgraph(client, settings)
-    sql_executor_runnable = build_sql_executor_subgraph(settings)
 
-    # Create routing and failure handling functions
-    validation_failed_node = create_validation_failed_node()
-    route_after_validation = create_routing_function(settings)
+    # Bind dependencies to node functions using partial
+    sql_drafter_node = partial(draft_sql, client=client, settings=settings)
+    sql_validator_node = partial(validate_sql, settings=settings)
+    sql_repairer_node = partial(repair_sql, client=client, settings=settings)
+    sql_executor_node = partial(execute_sql, settings=settings)
+    route_func = partial(route_after_validation, settings=settings)
 
     workflow = StateGraph(WorkflowState)
     workflow.add_node("interpreter", interpreter_runnable)
-    workflow.add_node("sql_drafter", sql_drafter_runnable)
-    workflow.add_node("sql_validator", sql_validator_runnable)
-    workflow.add_node("sql_repairer", sql_repairer_runnable)
-    workflow.add_node("sql_executor", sql_executor_runnable)
+    workflow.add_node("sql_drafter", sql_drafter_node)
+    workflow.add_node("sql_validator", sql_validator_node)
+    workflow.add_node("sql_repairer", sql_repairer_node)
+    workflow.add_node("sql_executor", sql_executor_node)
     workflow.add_node("validation_failed", validation_failed_node)
 
     # Build workflow edges
@@ -142,7 +138,7 @@ def build_main_graph(
     # Conditional routing after validation
     workflow.add_conditional_edges(
         "sql_validator",
-        route_after_validation,
+        route_func,
         {
             "sql_executor": "sql_executor",
             "sql_repairer": "sql_repairer",
@@ -154,8 +150,8 @@ def build_main_graph(
     workflow.add_edge("sql_repairer", "sql_validator")
 
     if enable_persistence:
-        persistence_runnable = build_persistence_subgraph(settings)
-        workflow.add_node("persistence", persistence_runnable)
+        persistence_node = partial(persist_results, settings=settings)
+        workflow.add_node("persistence", persistence_node)
         workflow.add_edge("sql_executor", "persistence")
         workflow.add_edge("validation_failed", "persistence")
         workflow.add_edge("persistence", END)

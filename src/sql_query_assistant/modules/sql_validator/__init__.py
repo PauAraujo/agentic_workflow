@@ -1,1 +1,1 @@
-from .graph import build_sql_validator_subgraph
+from .nodes import validate_sql

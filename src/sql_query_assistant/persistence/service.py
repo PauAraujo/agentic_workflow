@@ -35,16 +35,6 @@ JSON_FILENAME_PATTERN = "run_{:05d}.json"
 
 
 
-def _ensure_output_dir(output_dir: Path) -> None:
-    """
-    Create output directory if it doesn't exist.
-
-    Args:
-        output_dir: Path to the output directory
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    logger.debug("Output directory ensured: %s", output_dir)
-
 
 def _get_next_run_id(query_runs_file: Path) -> int:
     """
@@ -123,7 +113,7 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
         The run_id assigned to this execution
     """
     output_dir = settings.paths.output_dir
-    _ensure_output_dir(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     query_runs_file = settings.paths.query_runs_file
     query_assumptions_file = settings.paths.query_assumptions_file
@@ -185,7 +175,7 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
         OSError: If directory creation or file write fails (permissions, disk full, etc.)
     """
     output_dir = settings.paths.output_dir
-    _ensure_output_dir(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     json_dir = settings.paths.state_dumps_dir
     json_dir.mkdir(parents=True, exist_ok=True)
