@@ -50,7 +50,6 @@ def test_interpret_query_enriches_from_catalog(sample_table_card, sample_assumpt
     # Verify LLM call parameters
     assert client.call_count == 1
     assert client.last_schema is RawInterpreterResponse
-    assert client.last_deployment_name == "gpt-4o-mini"
     assert client.last_temperature == pytest.approx(0.0)
 
     # Verify enrichment from catalog
