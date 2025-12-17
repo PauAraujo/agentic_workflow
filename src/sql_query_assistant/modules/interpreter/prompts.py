@@ -20,6 +20,7 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON):
 ]
 }}
 """
+# TODO: Consider alternative that works with business rules instead of assumptions catalog
 
 # TODO: Add input validation or escape user content (prompt injection vulnerability)
 USER_PROMPT = """User query:

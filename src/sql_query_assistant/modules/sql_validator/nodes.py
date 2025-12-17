@@ -76,7 +76,9 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
 
             # Use EXPLAIN QUERY PLAN for dry-run validation
             explain_sql = f"EXPLAIN QUERY PLAN {sql}"
-            cursor.execute(explain_sql)
+            cursor.execute(explain_sql) # validator checks if the SQL is valid, not if it is safe
+            # TODO: ensure connection is read-only
+            #  or add a string check in the validator ensuring the query starts with SELECT or WITH
 
             # If we get here, the query is valid (no errors added)
             logger.info("SQL validation passed all checks")

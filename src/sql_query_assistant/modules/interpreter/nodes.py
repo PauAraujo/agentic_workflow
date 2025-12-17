@@ -193,8 +193,6 @@ def interpret_query(
     llm_response = client.call_llm(
         messages=prompt_template_formatted,
         schema=RawInterpreterResponse,
-        deployment_name="gpt-4o-mini",
-        temperature=0.0
     )
 
     # Build catalog lookup for validation
