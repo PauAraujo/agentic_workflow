@@ -70,7 +70,7 @@ class OpenAILLMClient:
         messages: Sequence[BaseMessage],
         schema: Type[T],
         deployment_name: str | None = None,
-        temperature: float = 0.0,
+        temperature: float = 1,
     ) -> T:
         """
         Call the LLM with structured output validation.
@@ -79,7 +79,7 @@ class OpenAILLMClient:
             messages: Sequence of messages to send to the LLM
             schema: Pydantic model class defining the expected output schema
             deployment_name: Optional model deployment name to override default
-            temperature: Temperature parameter for the LLM (default: 0.0)
+            temperature: Temperature parameter for the LLM (default: 1) # TODO: adjust default
 
         Returns:
             Parsed LLM response conforming to the provided schema

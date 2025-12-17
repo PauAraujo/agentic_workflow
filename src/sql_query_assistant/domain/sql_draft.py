@@ -13,3 +13,7 @@ class SQLDraft(BaseModel):
         ...,
         description="Tables referenced in the draft query, if detected",
     )
+    dialect: str = Field(
+        ...,
+        description="SQL dialect used for this query (e.g., 'sqlite', 'oracle', 'postgres')"
+    )

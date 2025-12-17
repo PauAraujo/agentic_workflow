@@ -15,6 +15,8 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
     """
     Validate SQL using SQLGlot (syntax validation) and EXPLAIN (semantic validation).
 
+    Since SQL is generated in the target dialect, we validate it directly without conversion.
+
     Validation steps:
     1. SQLGlot Parse: Check if SQL is syntactically valid
     2. EXPLAIN: Dry-run against actual database to catch schema errors
@@ -38,13 +40,15 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         }
 
     sql = sql_draft.sql
+    dialect = sql_draft.dialect
+    logger.info("Validating SQL (dialect: %s): %s", dialect, sql[:100])
 
     # Initialize result
     result = ValidationResult(original_sql=sql)
 
     # SQLGlot syntax check
     try:
-        parse_one(sql)
+        parse_one(sql, read=dialect)
         logger.debug("SQLGlot syntax validation passed")
     except ParseError as e:
         error_msg = f"SQL syntax error: {str(e)}"

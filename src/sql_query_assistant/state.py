@@ -7,6 +7,7 @@ from sql_query_assistant.domain import (
     IntentCard,
     SQLDraft,
     QueryResult,
+    ValidationResult,
 )
 
 
@@ -30,6 +31,13 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Drafter output
     sql_draft: SQLDraft
+
+    # SQL Validator output
+    validation_result: ValidationResult
+
+    # SQL Repairer tracking
+    repair_attempts: int
+    repair_history: list[SQLDraft]  # all SQL drafts created during repair attempts
 
     # SQL Executor output
     query_result: QueryResult
