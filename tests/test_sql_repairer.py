@@ -3,7 +3,7 @@ import pytest
 from typing import cast
 
 from tests.conftest import DummyLLMClient
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.modules.sql_repairer.models import RawSQLRepairResponse
 from sql_query_assistant.modules.sql_repairer.nodes import repair_sql
 from sql_query_assistant.domain import SQLDraft, IntentCard, InterpreterResponse, ValidationResult
@@ -16,7 +16,7 @@ def _make_repair_client(sql, rationale, tables_used):
         rationale=rationale,
         tables_used=tables_used,
     )
-    return cast(OpenAILLMClient, DummyLLMClient(llm_response))
+    return cast(LLMClient, DummyLLMClient(llm_response))
 
 
 def _make_repairer_state(sql_draft, validation_result, intent_card, table_cards, repair_attempts=0):
@@ -71,7 +71,7 @@ def test_repair_sql_returns_new_sql_draft(
         original_draft, failed_validation, basic_intent_card, sample_table_card
     )
 
-    result = repair_sql(state, client, dummy_settings)
+    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     assert "sql_draft" in result
     new_draft = result["sql_draft"]
@@ -105,7 +105,7 @@ def test_repair_sql_increments_repair_attempts(
         original_draft, failed_validation, basic_intent_card, sample_table_card, repair_attempts=1
     )
 
-    result = repair_sql(state, client, dummy_settings)
+    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     # Should be incremented to 2
     assert result["repair_attempts"] == 2
@@ -132,7 +132,7 @@ def test_repair_sql_tracks_repair_history(
         original_draft, failed_validation, basic_intent_card, sample_table_card
     )
 
-    result = repair_sql(state, client, dummy_settings)
+    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     assert "repair_history" in result
     history = result["repair_history"]
@@ -164,7 +164,7 @@ def test_repair_sql_uses_validation_errors_in_prompt(
         original_draft, failed_validation, basic_intent_card, sample_table_card
     )
 
-    repair_sql(state, client, dummy_settings)
+    repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     # Verify the prompt includes validation errors
     assert client.call_count == 1
@@ -186,7 +186,7 @@ def test_repair_sql_handles_missing_required_state(dummy_settings):
 
     client = _make_repair_client(sql="SELECT 1", rationale="", tables_used=[])
 
-    result = repair_sql(incomplete_state, client, dummy_settings)
+    result = repair_sql(incomplete_state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     # Should return empty dict when state is incomplete
     assert result == {}
@@ -208,7 +208,7 @@ def test_repair_sql_preserves_history_on_llm_failure(
         def call_llm(self, **kwargs):
             raise RuntimeError("LLM API error")
 
-    client = cast(OpenAILLMClient, FailingLLMClient())
+    client = cast(LLMClient, FailingLLMClient())
 
     # Pre-populate repair history
     existing_history = [
@@ -220,7 +220,7 @@ def test_repair_sql_preserves_history_on_llm_failure(
     )
     state["repair_history"] = existing_history
 
-    result = repair_sql(state, client, dummy_settings)
+    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
 
     # Should still increment attempts and preserve history
     assert result["repair_attempts"] == 2

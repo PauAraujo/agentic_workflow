@@ -3,12 +3,13 @@ import pytest
 from typing import cast
 
 from tests.conftest import DummyLLMClient
+from sql_query_assistant.config import ModelConfig
 from sql_query_assistant.domain import (
     AssumptionCatalogEntry,
     AssumptionOption,
     SelectedAssumption,
 )
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.modules.interpreter.models import RawAssumptionSelection, RawInterpreterResponse
 from sql_query_assistant.modules.interpreter.nodes import build_intent_card, interpret_query
 
@@ -16,7 +17,12 @@ from sql_query_assistant.modules.interpreter.nodes import build_intent_card, int
 def _make_llm_client(assumption_selections):
     """Create a DummyLLMClient with the given assumption selections."""
     llm_response = RawInterpreterResponse(assumptions=assumption_selections)
-    return cast(OpenAILLMClient, DummyLLMClient(llm_response))
+    return cast(LLMClient, DummyLLMClient(llm_response))
+
+
+def _make_model_config():
+    """Create a standard ModelConfig for tests."""
+    return ModelConfig(provider="azure", model_name="gpt-4o-mini", temperature=0.0)
 
 
 def _make_interpreter_state(user_query, table_cards, assumption_catalog):
@@ -44,13 +50,14 @@ def test_interpret_query_enriches_from_catalog(sample_table_card, sample_assumpt
     ])
     interpreter_state = _make_interpreter_state(user_query, sample_table_card, sample_assumption_catalog)
 
-    result = interpret_query(interpreter_state, client)
+    model_config = _make_model_config()
+    result = interpret_query(interpreter_state, client, model_config)
     selected = result["selected_assumptions"][0]
 
     # Verify LLM call parameters
     assert client.call_count == 1
     assert client.last_schema is RawInterpreterResponse
-    assert client.last_temperature == pytest.approx(0.0)
+    assert client.last_model_config == model_config
 
     # Verify enrichment from catalog
     assert selected.assumption_label == "Age Selection Method"
@@ -79,7 +86,8 @@ def test_interpret_query_invalid_option_falls_back_to_default(
     ])
     interpreter_state = _make_interpreter_state(user_query, sample_table_card, sample_assumption_catalog)
 
-    result = interpret_query(interpreter_state, client)
+    model_config = _make_model_config()
+    result = interpret_query(interpreter_state, client, model_config)
     selected = result["selected_assumptions"][0]
 
     # Should fall back to catalog default (BINARY_STRICT)
@@ -107,7 +115,8 @@ def test_interpret_query_skips_unknown_assumption(sample_table_card, sample_assu
     ])
     interpreter_state = _make_interpreter_state(user_query, sample_table_card, sample_assumption_catalog)
 
-    result = interpret_query(interpreter_state, client)
+    model_config = _make_model_config()
+    result = interpret_query(interpreter_state, client, model_config)
 
     # Unknown assumptions should be skipped entirely
     assert result["selected_assumptions"] == []
@@ -135,7 +144,8 @@ def test_interpret_query_skips_assumption_with_empty_options(sample_table_card, 
     ])
     interpreter_state = _make_interpreter_state(user_query, sample_table_card, malformed_catalog)
 
-    result = interpret_query(interpreter_state, client)
+    model_config = _make_model_config()
+    result = interpret_query(interpreter_state, client, model_config)
 
     # Should skip the malformed assumption
     assert result["selected_assumptions"] == []
@@ -174,7 +184,8 @@ def test_interpret_query_handles_invalid_default_in_catalog(sample_table_card, u
     ])
     interpreter_state = _make_interpreter_state(user_query, sample_table_card, catalog_with_bad_default)
 
-    result = interpret_query(interpreter_state, client)
+    model_config = _make_model_config()
+    result = interpret_query(interpreter_state, client, model_config)
     selected = result["selected_assumptions"][0]
 
     # Should fall back to first option since default is invalid

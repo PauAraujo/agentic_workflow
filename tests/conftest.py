@@ -11,22 +11,20 @@ from sql_query_assistant.domain import (
 
 
 class DummyLLMClient:
-    "Fakes OpenAILLMClient.call_llm to avoid network calls and capture prompt data."
+    "Fakes UnifiedLLMClient.call_llm to avoid network calls and capture prompt data"
 
     def __init__(self, response):
         self.response = response
         self.call_count = 0
         self.last_messages = None
         self.last_schema = None
-        self.last_deployment_name = None
-        self.last_temperature = None
+        self.last_model_config = None
 
-    def call_llm(self, messages, schema, deployment_name=None, temperature=0.0):
+    def call_llm(self, messages, schema, model_config):
         self.call_count += 1
         self.last_messages = messages
         self.last_schema = schema
-        self.last_deployment_name = deployment_name
-        self.last_temperature = temperature
+        self.last_model_config = model_config
 
         if self.response is not None and not isinstance(self.response, schema):
             raise TypeError(f"Response type {type(self.response)} does not match schema {schema}")
@@ -47,7 +45,7 @@ def dummy_settings(tmp_path):
         langfuse=None,
         paths=PathSettings(
             input_dir=tmp_path,
-            output_dir=tmp_path,  # Use tmp_path for output too!
+            output_dir=tmp_path,
         ),
     )
 

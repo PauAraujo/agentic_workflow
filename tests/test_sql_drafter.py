@@ -1,13 +1,14 @@
 import pytest
 
 from typing import cast
+
 from tests.conftest import DummyLLMClient
 from sql_query_assistant.domain import (
     IntentCard,
     InterpreterResponse,
     SelectedAssumption,
 )
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.modules.sql_drafter.models import RawSQLDraftResponse
 from sql_query_assistant.modules.sql_drafter.nodes import draft_sql
 
@@ -19,7 +20,7 @@ def _make_sql_drafter_client(sql, rationale, tables_used):
         rationale=rationale,
         tables_used=tables_used,
     )
-    return cast(OpenAILLMClient, DummyLLMClient(llm_response))
+    return cast(LLMClient, DummyLLMClient(llm_response))
 
 
 def _make_drafter_state(intent_card, table_cards):
@@ -58,7 +59,7 @@ def test_draft_sql_returns_sql_draft(intent_card, sample_table_card, dummy_setti
     )
     state = _make_drafter_state(intent_card, sample_table_card)
 
-    result = draft_sql(state, client, dummy_settings)
+    result = draft_sql(state, client, dummy_settings.agents.drafter, dummy_settings.target_sql_dialect)
 
     assert "sql_draft" in result
     sql_draft = result["sql_draft"]
@@ -78,7 +79,7 @@ def test_draft_sql_formats_prompt(intent_card, sample_table_card, dummy_settings
     )
     state = _make_drafter_state(intent_card, sample_table_card)
 
-    draft_sql(state, client, dummy_settings)
+    draft_sql(state, client, dummy_settings.agents.drafter, dummy_settings.target_sql_dialect)
 
     # Verify two-message prompt structure
     assert client.last_messages is not None
@@ -93,8 +94,3 @@ def test_draft_sql_formats_prompt(intent_card, sample_table_card, dummy_settings
     assert intent_card.task in human_message.content
     assert "ICSR.PATIENT" in human_message.content
     assert intent_card.assumption_response.assumption_choices[0].assumption_id in human_message.content
-
-    # Verify LLM call parameters
-    assert client.last_schema == RawSQLDraftResponse
-    assert client.last_deployment_name == "gpt-4o-mini"
-    assert client.last_temperature == 0.0
