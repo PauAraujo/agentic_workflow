@@ -5,7 +5,7 @@ from langgraph.graph import END, StateGraph
 
 from ..config import Settings
 from ..domain import QueryResult
-from ..llm_client import OpenAILLMClient
+from ..llm_client import LLMClient
 from ..state import WorkflowState
 from ..modules.interpreter import build_interpreter_subgraph
 from ..modules.sql_drafter import draft_sql
@@ -83,12 +83,12 @@ def route_after_validation(state: WorkflowState, settings: Settings) -> str:
 
 
 def build_main_graph(
-    client: OpenAILLMClient,
+    client: LLMClient,
     settings: Settings,
     enable_persistence: bool = True,
 ):
     """
-    Compose the main graph with validation and repair loop.
+    Compose the main graph with per-agent model configuration.
 
     Workflow:
     1. interpreter -> sql_drafter
@@ -105,22 +105,49 @@ def build_main_graph(
         - The loop (Repair -> Validate) continues until the query passes or max_retries is hit.
 
     Args:
-        client: LLM client instance for making LLM calls
-        settings: Settings instance for downstream modules (e.g., persistence)
+        client: LLM client supporting multiple providers
+        settings: Settings instance with agent configurations
         enable_persistence: Whether to include persistence in the workflow
 
     Returns:
         The executable LangGraph workflow (compiled StateGraph) ready for invocation
     """
-    # Build interpreter subgraph (multi-node)
-    interpreter_runnable = build_interpreter_subgraph(client)
+    # Build interpreter subgraph with its specific model config
+    interpreter_runnable = build_interpreter_subgraph(
+        client=client,
+        model_config=settings.agents.interpreter,
+    )
 
-    # Bind dependencies to node functions using partial
-    sql_drafter_node = partial(draft_sql, client=client, settings=settings)
-    sql_validator_node = partial(validate_sql, settings=settings)
-    sql_repairer_node = partial(repair_sql, client=client, settings=settings)
-    sql_executor_node = partial(execute_sql, settings=settings)
-    route_func = partial(route_after_validation, settings=settings)
+    # Bind dependencies to node functions with agent-specific configs
+    sql_drafter_node = partial(
+        draft_sql,
+        client=client,
+        model_config=settings.agents.drafter,
+        target_dialect=settings.target_sql_dialect,
+    )
+
+    sql_validator_node = partial(
+        validate_sql,
+        settings=settings,
+    )
+
+    sql_repairer_node = partial(
+        repair_sql,
+        client=client,
+        model_config=settings.agents.repairer,
+        target_dialect=settings.target_sql_dialect,
+        max_repair_attempts=settings.max_repair_attempts,
+    )
+
+    sql_executor_node = partial(
+        execute_sql,
+        settings=settings,
+    )
+
+    route_func = partial(
+        route_after_validation,
+        settings=settings,
+    )
 
     workflow = StateGraph(WorkflowState)
     workflow.add_node("interpreter", interpreter_runnable)

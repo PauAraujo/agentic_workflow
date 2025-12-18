@@ -3,7 +3,8 @@ import logging
 
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import SQLDraft
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
+from sql_query_assistant.config import ModelConfig
 from sql_query_assistant.prompting import prompt_factory
 from .models import RawSQLRepairResponse
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
@@ -11,14 +12,22 @@ from .prompts import SYSTEM_PROMPT, USER_PROMPT
 logger = logging.getLogger(__name__)
 
 
-def repair_sql(state: WorkflowState, client: OpenAILLMClient, settings) -> dict:
+def repair_sql(
+    state: WorkflowState,
+    client: LLMClient,
+    model_config: ModelConfig,
+    target_dialect: str,
+    max_repair_attempts: int,
+) -> dict:
     """
     Attempt to repair SQL that failed validation using LLM.
 
     Args:
         state: Current workflow state with validation_result and sql_draft
-        client: LLM client for making repair calls
-        settings: Settings instance for target SQL dialect configuration
+        client: LLMClient instance for making repair calls
+        model_config: Model configuration specifying provider, model, and temperature
+        target_dialect: Target SQL dialect for query generation (e.g., 'sqlite', 'postgres')
+        max_repair_attempts: Maximum number of repair attempts allowed
 
     Returns:
         Partial state update with repaired sql_draft, incremented repair_attempts,
@@ -37,8 +46,7 @@ def repair_sql(state: WorkflowState, client: OpenAILLMClient, settings) -> dict:
 
     # Increment repair attempts
     repair_attempts += 1
-    target_dialect = settings.target_sql_dialect
-    logger.info("SQL repair attempt %d/%d (target dialect: %s)", repair_attempts, settings.max_repair_attempts, target_dialect)
+    logger.info("SQL repair attempt %d/%d (target dialect: %s)", repair_attempts, max_repair_attempts, target_dialect)
 
     # Get validation errors
     validation_errors = validation_result.get_error_summary()
@@ -54,7 +62,7 @@ def repair_sql(state: WorkflowState, client: OpenAILLMClient, settings) -> dict:
         intent_card=json.dumps(intent_card.model_dump(), indent=2),
         table_cards=json.dumps([tc.model_dump() for tc in table_cards], indent=2),
         repair_attempt=repair_attempts,
-        max_attempts=settings.max_repair_attempts
+        max_attempts=max_repair_attempts
     )
 
     # Call LLM with structured output
@@ -62,8 +70,7 @@ def repair_sql(state: WorkflowState, client: OpenAILLMClient, settings) -> dict:
         llm_response = client.call_llm(
             messages=prompt_messages,
             schema=RawSQLRepairResponse,
-            deployment_name="gpt-4o-mini", # TODO: Save in output what deployment was used at each step
-            temperature=0.0,
+            model_config=model_config,
         )
 
         repaired_draft = SQLDraft(

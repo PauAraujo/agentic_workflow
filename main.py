@@ -4,10 +4,12 @@ import logging
 import argparse
 
 from pathlib import Path
+from dotenv import load_dotenv
 
 from sql_query_assistant import Settings, WorkflowState, create_llm_client
 from sql_query_assistant.workflow import build_main_graph, run_workflow
 
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

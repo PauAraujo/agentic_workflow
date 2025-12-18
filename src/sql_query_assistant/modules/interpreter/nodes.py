@@ -3,7 +3,8 @@ import logging
 
 from .models import RawInterpreterResponse, RawAssumptionSelection
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
+from sql_query_assistant.config import ModelConfig
 from sql_query_assistant.prompting import prompt_factory
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import (
@@ -146,7 +147,8 @@ def _validate_and_enrich_assumption(
 
 def interpret_query(
     state: WorkflowState,
-    client: OpenAILLMClient,
+    client: LLMClient,
+    model_config: ModelConfig,
 ) -> WorkflowState:
     """
     Select and validate assumptions based on user query and available tables.
@@ -167,7 +169,8 @@ def interpret_query(
 
     Args:
         state: Current state containing user_query, table_cards, and assumption_catalog
-        client: OpenAILLMClient instance for LLM calls
+        client: LLMClient instance for LLM calls
+        model_config: Model configuration specifying provider, model, and temperature
 
     Returns:
         Partial state update containing the validated and enriched selected_assumptions list.
@@ -193,6 +196,7 @@ def interpret_query(
     llm_response = client.call_llm(
         messages=prompt_template_formatted,
         schema=RawInterpreterResponse,
+        model_config=model_config,
     )
 
     # Build catalog lookup for validation

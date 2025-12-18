@@ -4,22 +4,31 @@ from langchain_core.runnables import Runnable
 from langgraph.graph import END, StateGraph
 
 from .nodes import build_intent_card, interpret_query
-from sql_query_assistant.llm_client import OpenAILLMClient
+from sql_query_assistant.llm_client import LLMClient
+from sql_query_assistant.config import ModelConfig
 from sql_query_assistant.state import WorkflowState
 
-def build_interpreter_subgraph(client: OpenAILLMClient) -> Runnable:
+def build_interpreter_subgraph(
+    client: LLMClient,
+    model_config: ModelConfig,
+) -> Runnable:
     """
-    Build the interpreter subgraph that can be composed into larger workflows.
+    Build the interpreter subgraph with specified model configuration.
 
     Args:
-        client: LLM client instance for making LLM calls
+        client: LLM client for making LLM calls
+        model_config: Model configuration for the interpreter agent
 
     Returns:
         Compiled LangGraph workflow runnable for the interpreter module.
     """
     workflow = StateGraph(WorkflowState)
 
-    interpret_query_node = partial(interpret_query, client=client)
+    interpret_query_node = partial(
+        interpret_query,
+        client=client,
+        model_config=model_config,
+    )
 
     workflow.add_node("interpret_query", interpret_query_node)
     workflow.add_node("build_intent_card", build_intent_card)

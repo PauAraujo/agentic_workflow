@@ -1,5 +1,5 @@
 from .config import Settings
-from .llm_client import OpenAILLMClient, create_llm_client
+from .llm_client import LLMClient, create_llm_client
 from .state import WorkflowState
 from .utils import load_assumption_catalog, load_table_cards
 from .domain import QueryResult
