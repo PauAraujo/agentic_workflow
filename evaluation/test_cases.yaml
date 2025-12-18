@@ -1,0 +1,152 @@
+# Each test case represents a natural language query with expected outcomes
+
+test_cases:
+  # Basic retrieval queries
+  - id: basic_select_all
+    query: "Show me all patients"
+    description: "Basic SELECT * query"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM"]
+      min_rows: 1
+
+  - id: basic_select_columns
+    query: "Show me patient IDs and sex"
+    description: "SELECT with specific columns"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM"]
+      columns: ["SAFETY_REPORT_ID", "PATIENT_SEX_ID"]
+
+  # Aggregation queries
+  - id: count_all
+    query: "How many patients are there?"
+    description: "COUNT aggregation"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["COUNT", "FROM"]
+      has_aggregation: true
+      result_shape: "single_value"
+
+  - id: group_by_gender
+    query: "Count patients by gender"
+    description: "GROUP BY with COUNT"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["COUNT", "GROUP BY"]
+      columns: ["PATIENT_SEX_ID"]
+      has_aggregation: true
+      has_group_by: true
+
+  - id: group_by_age_range
+    query: "Show me the number of patients in each age group"
+    description: "GROUP BY with age range"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["COUNT", "GROUP BY"]
+      has_aggregation: true
+      has_group_by: true
+
+  # Filtering queries
+  - id: filter_by_gender
+    query: "Show me all female patients"
+    description: "WHERE clause with equality"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "WHERE"]
+      columns: ["PATIENT_SEX_ID"]
+      has_where: true
+
+  - id: filter_by_age
+    query: "Show me patients older than 50"
+    description: "WHERE clause with comparison"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "WHERE"]
+      columns: ["ONSET_AGE"]
+      has_where: true
+      operators: [">"]
+
+  - id: filter_multiple_conditions
+    query: "Show me female patients older than 50"
+    description: "WHERE with multiple conditions"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "WHERE", "AND"]
+      has_where: true
+      logical_operators: ["AND"]
+
+  # Sorting queries
+  - id: order_by_age
+    query: "Show me patients sorted by age"
+    description: "ORDER BY clause"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "ORDER BY"]
+      has_order_by: true
+
+  - id: order_desc
+    query: "Show me the oldest patients first"
+    description: "ORDER BY DESC (Note: LLM may incorrectly generate ASC)"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "ORDER BY", "DESC"]
+      has_order_by: true
+
+  # LIMIT queries
+  - id: top_n
+    query: "Show me the top 10 patients"
+    description: "LIMIT/TOP clause"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM"]
+      has_limit: true
+      max_rows: 10
+
+  # Complex queries
+  - id: aggregate_with_filter
+    query: "How many female patients are older than 30?"
+    description: "Aggregation with WHERE clause"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["COUNT", "FROM", "WHERE"]
+      has_aggregation: true
+      has_where: true
+
+  - id: avg_age_by_gender
+    query: "What is the average age of patients by gender?"
+    description: "AVG with GROUP BY"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["AVG", "GROUP BY"]
+      columns: ["PATIENT_SEX_ID"]
+      has_aggregation: true
+      has_group_by: true
+
+  # Edge cases
+  - id: ambiguous_query
+    query: "Show me patients"
+    description: "Ambiguous query (should work but test assumption handling)"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM"]
+      should_succeed: true
+
+  - id: complex_filter
+    query: "Show me patients between 30 and 50 years old"
+    description: "BETWEEN operator or range condition"
+    expected:
+      tables: ["ICSR_PATIENT"]
+      keywords: ["SELECT", "FROM", "WHERE"]
+      columns: ["ONSET_AGE"]
+      has_where: true
+      operators: ["BETWEEN", ">=", "<=", "AND"]  # Accept either BETWEEN or range
+
+# Metadata about the test suite
+metadata:
+  version: "1.0"
+  database: "SQLite"
+  schema: "ICSR_PATIENT"
+  total_test_cases: 15
+  created: "2024-12-15"
+  last_updated: "2025-12-17"
