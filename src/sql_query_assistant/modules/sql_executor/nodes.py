@@ -78,9 +78,14 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
     logger.debug("SQL (dialect: %s): %s", sql_draft.dialect, executable_sql[:100])
 
     try:
-        with sqlite3.connect(db_path) as conn:
+        # Connect to in-memory database and attach the actual DB as ICSR schema
+        # This allows queries to use Oracle-style schema.table notation (e.g., ICSR.PATIENT)
+        with sqlite3.connect(":memory:") as conn:
             conn.row_factory = sqlite3.Row  # enable column name access
             cursor = conn.cursor()
+
+            # Attach the database file under the ICSR schema alias
+            cursor.execute("ATTACH DATABASE ? AS ICSR", (str(db_path),))
 
             start_time = time.perf_counter()
             cursor.execute(executable_sql)

@@ -71,8 +71,13 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         return {"validation_result": result}
 
     try:
-        with sqlite3.connect(db_path) as conn:
+        # Connect to in-memory database and attach the actual DB as ICSR schema
+        # This allows queries to use Oracle-style schema.table notation (e.g., ICSR.PATIENT)
+        with sqlite3.connect(":memory:") as conn:
             cursor = conn.cursor()
+
+            # Attach the database file under the ICSR schema alias
+            cursor.execute("ATTACH DATABASE ? AS ICSR", (str(db_path),))
 
             # Use EXPLAIN QUERY PLAN for dry-run validation
             explain_sql = f"EXPLAIN QUERY PLAN {sql}"

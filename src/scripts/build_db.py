@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_PATH = ROOT / "input" / "db_exports" / "PATIENT_202512051327.csv"
 DB_PATH = ROOT / "input" / "db" / "patients.db"
-TABLE_NAME = "ICSR_PATIENT"
+TABLE_NAME = "PATIENT"
 
 
 def _load_source(path: Path) -> pd.DataFrame:

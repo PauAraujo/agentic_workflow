@@ -1,6 +1,6 @@
 {
   "table_metadata": {
-    "name": "ICSR_PATIENT",
+    "name": "ICSR.PATIENT",
     "synonyms": ["Subject", "Case Demographics", "Patient"],
     "description": "Stores demographic details. Granularity: One row per Safety Report.",
     "primary_key": ["SAFETY_REPORT_ID"]
