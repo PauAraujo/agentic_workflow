@@ -55,7 +55,8 @@ def sample_table_card():
     """Returns a sample TableCard model based on actual ICSR.PATIENT structure."""
     return TableCard(
         table_metadata=TableMetadata(
-            name="ICSR.PATIENT",
+            schema_name="ICSR",
+            name="PATIENT",
             synonyms=["Subject", "Case Demographics", "Patient"],
             description="Stores demographic details. Granularity: One row per Safety Report.",
             primary_key=["SAFETY_REPORT_ID"],
@@ -146,7 +147,8 @@ def sample_raw_table_card_dict():
     """Returns minimal raw dictionary for testing file loaders."""
     return {
         "table_metadata": {
-            "name": "ICSR.PATIENT",
+            "schema_name": "ICSR",
+            "name": "PATIENT",
             "synonyms": ["Patient"],
             "description": "Patient demographic data",
             "primary_key": ["SAFETY_REPORT_ID"],
@@ -213,7 +215,7 @@ def complete_workflow_state(sample_table_card, sample_assumption_catalog):
     sql_draft = SQLDraft(
         sql="SELECT * FROM ICSR.PATIENT",
         rationale="Simple query to return all patient records",
-        tables_used=["ICSR.PATIENT"],
+        tables_used=["ICSR.PATIENT"],  # Note: LLM may use qualified or unqualified names
         dialect="sqlite",
     )
 

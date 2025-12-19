@@ -7,6 +7,7 @@ from sqlglot.errors import ParseError, SqlglotError
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import ValidationResult
 from sql_query_assistant.config import Settings
+from sql_query_assistant.utils import attach_all_schema_databases
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +63,14 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         return {"validation_result": result}
 
     # EXPLAIN validation (semantic check against database)
-    db_path = settings.paths.database_file
-
-    if not db_path.exists():
-        error_msg = f"Database file not found: {db_path}"
-        result.explain_errors.append(error_msg)
-        logger.error(error_msg)
-        return {"validation_result": result}
-
     try:
-        # Connect to in-memory database and attach the actual DB as ICSR schema
-        # This allows queries to use Oracle-style schema.table notation (e.g., ICSR.PATIENT)
+        # Connect to in-memory database and auto-attach all schema databases
+        # Convention: DB filename = schema name (e.g., ICSR.db → schema ICSR)
         with sqlite3.connect(":memory:") as conn:
             cursor = conn.cursor()
 
-            # Attach the database file under the ICSR schema alias
-            cursor.execute("ATTACH DATABASE ? AS ICSR", (str(db_path),))
+            # Auto-discover and attach all .db files from db directory
+            attach_all_schema_databases(cursor, settings)
 
             # Use EXPLAIN QUERY PLAN for dry-run validation
             explain_sql = f"EXPLAIN QUERY PLAN {sql}"

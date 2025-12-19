@@ -2,7 +2,7 @@ import pytest
 import sqlite3
 
 from sql_query_assistant.modules.sql_validator.nodes import validate_sql
-from sql_query_assistant.domain import SQLDraft
+from sql_query_assistant.domain import SQLDraft, TableCard, TableMetadata
 
 
 def _make_validator_state(sql, dialect="sqlite"):
@@ -11,7 +11,7 @@ def _make_validator_state(sql, dialect="sqlite"):
         "sql_draft": SQLDraft(
             sql=sql,
             rationale="Test SQL",
-            tables_used=["PATIENT"],
+            tables_used=["ICSR.PATIENT"],
             dialect=dialect,
         ),
     }
@@ -19,11 +19,13 @@ def _make_validator_state(sql, dialect="sqlite"):
 
 @pytest.fixture
 def db_with_patient_table(dummy_settings):
-    """Create a test database with PATIENT table."""
-    db_path = dummy_settings.paths.database_file
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    """Create a test database with PATIENT table using schema convention."""
+    db_dir = dummy_settings.paths.input_dir / dummy_settings.paths.db_subdir
+    db_dir.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    # Create ICSR.db following the schema naming convention
+    icsr_db_path = db_dir / "ICSR.db"
+    conn = sqlite3.connect(icsr_db_path)
     conn.execute("CREATE TABLE PATIENT (id INTEGER PRIMARY KEY, name TEXT)")
     conn.close()
 
@@ -32,17 +34,20 @@ def db_with_patient_table(dummy_settings):
 
 @pytest.fixture
 def empty_db(dummy_settings):
-    """Create an empty test database."""
-    db_path = dummy_settings.paths.database_file
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    sqlite3.connect(db_path).close()
+    """Create an empty test database using schema convention."""
+    db_dir = dummy_settings.paths.input_dir / dummy_settings.paths.db_subdir
+    db_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create empty ICSR.db
+    icsr_db_path = db_dir / "ICSR.db"
+    sqlite3.connect(icsr_db_path).close()
 
     return dummy_settings
 
 
 def test_validate_sql_passes_valid_query(db_with_patient_table):
     """Valid SQL should pass both SQLGlot parse and EXPLAIN validation."""
-    state = _make_validator_state("SELECT id, name FROM PATIENT WHERE id = 1")
+    state = _make_validator_state("SELECT id, name FROM ICSR.PATIENT WHERE id = 1")
 
     result = validate_sql(state, db_with_patient_table)
 
@@ -87,7 +92,7 @@ def test_validate_sql_fails_on_schema_error(empty_db):
 def test_validate_sql_uses_correct_dialect(db_with_patient_table):
     """Validator should use the dialect from sql_draft for parsing."""
     state = _make_validator_state(
-        sql="SELECT * FROM PATIENT LIMIT 5",
+        sql="SELECT * FROM ICSR.PATIENT LIMIT 5",
         dialect="sqlite"
     )
 
@@ -99,7 +104,7 @@ def test_validate_sql_uses_correct_dialect(db_with_patient_table):
 
 def test_validate_sql_handles_missing_sql_draft(dummy_settings):
     """Should return error result when sql_draft is missing from state."""
-    state = {}  # no sql_draft :(
+    state = {}  # no sql_draft :( and no table_cards
 
     result = validate_sql(state, dummy_settings)
 

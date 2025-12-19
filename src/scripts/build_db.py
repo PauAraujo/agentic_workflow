@@ -6,8 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_PATH = ROOT / "input" / "db_exports" / "PATIENT_202512051327.csv"
-DB_PATH = ROOT / "input" / "db" / "patients.db"
-TABLE_NAME = "PATIENT"
+SCHEMA_NAME = "ICSR"  # Schema name determines the DB filename
+DB_PATH = ROOT / "input" / "db" / f"{SCHEMA_NAME}.db"
+TABLE_NAME = "PATIENT"  # Real Oracle table name (will be accessed as ICSR.PATIENT)
 
 
 def _load_source(path: Path) -> pd.DataFrame:
@@ -45,6 +46,7 @@ def main():
         conn.close()
 
     print(f"Created SQLite database at {DB_PATH} with table {TABLE_NAME}")
+    print(f"Schema: {SCHEMA_NAME} (filename convention: {SCHEMA_NAME}.db)")
 
 if __name__ == "__main__":
     main()

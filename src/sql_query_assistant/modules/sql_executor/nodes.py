@@ -5,6 +5,7 @@ import sqlite3
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import QueryResult
 from sql_query_assistant.config import Settings
+from sql_query_assistant.utils import attach_all_schema_databases
 
 logger = logging.getLogger(__name__)
 
@@ -66,26 +67,20 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
             )
         }
 
-    db_path = settings.paths.database_file
-
-    if not db_path.exists():
-        logger.error("Database file not found: %s", db_path)
-        return _create_error_result(f"Database file not found: {db_path}")
-
     executable_sql = sql_draft.sql
 
-    logger.info("Executing SQL against database: %s", db_path)
+    logger.info("Executing SQL")
     logger.debug("SQL (dialect: %s): %s", sql_draft.dialect, executable_sql[:100])
 
     try:
-        # Connect to in-memory database and attach the actual DB as ICSR schema
-        # This allows queries to use Oracle-style schema.table notation (e.g., ICSR.PATIENT)
+        # Connect to in-memory database and auto-attach all schema databases
+        # Convention: DB filename = schema name (e.g., ICSR.db → schema ICSR)
         with sqlite3.connect(":memory:") as conn:
             conn.row_factory = sqlite3.Row  # enable column name access
             cursor = conn.cursor()
 
-            # Attach the database file under the ICSR schema alias
-            cursor.execute("ATTACH DATABASE ? AS ICSR", (str(db_path),))
+            # Auto-discover and attach all .db files from db directory
+            attach_all_schema_databases(cursor, settings)
 
             start_time = time.perf_counter()
             cursor.execute(executable_sql)

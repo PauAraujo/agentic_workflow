@@ -92,5 +92,7 @@ def test_draft_sql_formats_prompt(intent_card, sample_table_card, dummy_settings
     assert "SQL Drafting Agent" in system_message.content
     assert "Target SQL Dialect" in human_message.content
     assert intent_card.task in human_message.content
-    assert "ICSR.PATIENT" in human_message.content
+    # Verify table card schema and name are in the prompt
+    assert '"schema_name": "ICSR"' in human_message.content
+    assert '"name": "PATIENT"' in human_message.content
     assert intent_card.assumption_response.assumption_choices[0].assumption_id in human_message.content

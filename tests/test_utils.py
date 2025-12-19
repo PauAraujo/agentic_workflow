@@ -18,7 +18,9 @@ def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_
     assert len(cards) == 1
 
     # Verify table metadata
-    assert cards[0].table_metadata.name == "ICSR.PATIENT"
+    assert cards[0].table_metadata.schema_name == "ICSR"
+    assert cards[0].table_metadata.name == "PATIENT"
+    assert cards[0].table_metadata.qualified_name == "ICSR.PATIENT"
     assert cards[0].table_metadata.synonyms == ["Patient"]
     assert cards[0].table_metadata.description == "Patient demographic data"
     assert cards[0].table_metadata.primary_key == ["SAFETY_REPORT_ID"]
@@ -41,7 +43,7 @@ def test_load_table_cards_ignores_non_json_files(tmp_path, dummy_settings, sampl
     cards = load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
     assert len(cards) == 1
-    assert cards[0].table_metadata.name == "ICSR.PATIENT"
+    assert cards[0].table_metadata.qualified_name == "ICSR.PATIENT"
 
 
 @pytest.mark.parametrize("invalid_data", [
@@ -116,7 +118,7 @@ def test_load_table_cards_with_extra_fields(tmp_path, dummy_settings, sample_raw
     cards = load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
     assert len(cards) == 1
-    assert cards[0].table_metadata.name == "ICSR.PATIENT"
+    assert cards[0].table_metadata.qualified_name == "ICSR.PATIENT"
 
 
 def test_load_assumption_catalog_reads_yaml(tmp_path, dummy_settings, sample_raw_assumption_catalog_dict):
