@@ -48,7 +48,7 @@ test_cases:
     description: "Requires join to non-existent table"
     expected_failure: "semantic"
     expected:
-      tables: ["ICSR_PATIENT"]
+      tables: ["ICSR.PATIENT"]
       failure_type: "incomplete_query"
     notes: "Medications table doesn't exist - can't fulfill query"
 
