@@ -20,7 +20,7 @@ def _make_validator_state(sql, dialect="sqlite"):
 @pytest.fixture
 def db_with_patient_table(dummy_settings):
     """Create a test database with PATIENT table using schema convention."""
-    db_dir = dummy_settings.paths.input_dir / dummy_settings.paths.db_subdir
+    db_dir = dummy_settings.paths.db_dir
     db_dir.mkdir(parents=True, exist_ok=True)
 
     # Create ICSR.db following the schema naming convention
@@ -35,7 +35,7 @@ def db_with_patient_table(dummy_settings):
 @pytest.fixture
 def empty_db(dummy_settings):
     """Create an empty test database using schema convention."""
-    db_dir = dummy_settings.paths.input_dir / dummy_settings.paths.db_subdir
+    db_dir = dummy_settings.paths.db_dir
     db_dir.mkdir(parents=True, exist_ok=True)
 
     # Create empty ICSR.db

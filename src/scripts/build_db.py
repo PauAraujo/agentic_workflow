@@ -1,52 +1,80 @@
+import sys
 import sqlite3
 
 import pandas as pd
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SOURCE_PATH = ROOT / "input" / "db_exports" / "PATIENT_202512051327.csv"
-SCHEMA_NAME = "ICSR"  # Schema name determines the DB filename
-DB_PATH = ROOT / "input" / "db" / f"{SCHEMA_NAME}.db"
-TABLE_NAME = "PATIENT"  # Real Oracle table name (will be accessed as ICSR.PATIENT)
+from sql_query_assistant.config import Settings
+
+sys.path.append(str(Path(__file__).parents[2]))
 
 
-def _load_source(path: Path) -> pd.DataFrame:
-    """
-    Load either CSV or Excel into a DataFrame based on file extension.
+def build_schema(
+    schema_name: str,
+    source_file: Path,
+    settings: Settings,
+    reset_db: bool = True,
+):
+    """Creates or updates a specific schema database from a source file."""
 
-    Args:
-        path: Path to the source file (CSV or Excel)
+    # The filename becomes the schema name (e.g., input/db/ICSR.db)
+    db_path = settings.paths.db_dir / f"{schema_name}.db"
 
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Source file not found: {path}")
+    # Load data
+    print(f"Loading data from {source_file}...")
+    if source_file.suffix == '.csv':
+        df = pd.read_csv(source_file)
+    elif source_file.suffix in ('.xlsx', '.xls'):
+        df = pd.read_excel(source_file)
+    else:
+        raise ValueError(f"Unknown format: {source_file}")
 
-    suffix = path.suffix.lower()
-    if suffix == ".csv":
-        return pd.read_csv(path)
-    if suffix in (".xlsx", ".xls"):
-        return pd.read_excel(path)
-    raise ValueError(f"Unsupported source format: {suffix} (expected .csv or .xlsx)")
+    # Create DB
+    settings.paths.db_dir.mkdir(parents=True, exist_ok=True)
 
+    # Remove old DB if requested to ensure clean slate
+    if reset_db and db_path.exists():
+        db_path.unlink()
 
-def main():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    df = _load_source(SOURCE_PATH)
-
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     try:
-        # Write Excel/CSV rows into SQLite
-        df.to_sql(TABLE_NAME, conn, if_exists="replace", index=False)
+        # Use the filename as the table name
+        table_name = source_file.stem.split('_')[0] # e.g. PATIENT_2025 -> PATIENT
+
+        df.to_sql(table_name, conn, index=False)
+        print(f"✅ Created schema '{schema_name}' at {db_path} (Table: {table_name})")
     finally:
         conn.close()
 
-    print(f"Created SQLite database at {DB_PATH} with table {TABLE_NAME}")
-    print(f"Schema: {SCHEMA_NAME} (filename convention: {SCHEMA_NAME}.db)")
+def main():
+    settings = Settings()
+
+    export_dir = settings.paths.input_dir / "db_exports"
+    if not export_dir.exists():
+        raise FileNotFoundError(f"Export directory not found: {export_dir}")
+
+    schema_dirs = [path for path in sorted(export_dir.iterdir()) if path.is_dir()]
+    if not schema_dirs:
+        print(f"No schema folders found in {export_dir}")
+        return
+
+    for schema_dir in schema_dirs:
+        csv_files = [
+            path for path in sorted(schema_dir.iterdir())
+            if path.is_file() and path.suffix.lower() == ".csv"
+        ]
+        if not csv_files:
+            print(f"No CSV files found in {schema_dir}")
+            continue
+
+        for index, source_path in enumerate(csv_files):
+            build_schema(
+                schema_dir.name,
+                source_path,
+                settings,
+                reset_db=(index == 0),
+            )
 
 if __name__ == "__main__":
     main()

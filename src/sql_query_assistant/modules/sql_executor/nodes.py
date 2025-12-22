@@ -79,7 +79,7 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
             conn.row_factory = sqlite3.Row  # enable column name access
             cursor = conn.cursor()
 
-            # Auto-discover and attach all .db files from db directory
+            # Auto-discover and attach all .db files from schemas_dir directory
             attach_all_schema_databases(cursor, settings)
 
             start_time = time.perf_counter()

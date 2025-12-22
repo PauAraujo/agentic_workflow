@@ -40,8 +40,7 @@ class PathSettings(BaseModel):
     query_runs_filename: str = "query_runs.csv"
     query_assumptions_filename: str = "query_assumptions.csv"
     state_dumps_subdir: str = "state_dumps"
-    db_subdir: str = "db"
-    db_filename: str = "ICSR.db"  # Convention: filename = schema name
+    schemas_dir: str = "schemas_dir"
 
     @property
     def table_cards_dir(self) -> Path:
@@ -68,14 +67,9 @@ class PathSettings(BaseModel):
         return self.output_dir / self.state_dumps_subdir
 
     @property
-    def database_file(self) -> Path:
-        """
-        Returns path to a database file (for backward compatibility).
-
-        Note: With multi-schema support, prefer using the db_dir directly
-        and letting auto-discovery find all schema databases.
-        """
-        return self.input_dir / self.db_subdir / self.db_filename
+    def db_dir(self) -> Path:
+        """The directory containing all schema database files (.db)."""
+        return self.input_dir / self.schemas_dir
 
 
 class EnvBaseSettings(BaseSettings):

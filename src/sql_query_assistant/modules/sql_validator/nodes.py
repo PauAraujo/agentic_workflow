@@ -69,7 +69,7 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         with sqlite3.connect(":memory:") as conn:
             cursor = conn.cursor()
 
-            # Auto-discover and attach all .db files from db directory
+            # Auto-discover and attach all .db files from schemas_dir directory
             attach_all_schema_databases(cursor, settings)
 
             # Use EXPLAIN QUERY PLAN for dry-run validation

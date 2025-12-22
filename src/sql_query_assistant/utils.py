@@ -105,7 +105,7 @@ def load_assumption_catalog(
 
 def attach_all_schema_databases(cursor: sqlite3.Cursor, settings: Settings) -> None:
     """
-    Auto-discover and attach all schema databases from the db directory.
+    Auto-discover and attach all schema databases from the schemas_dir directory.
 
     Convention: Database filename (without .db extension) becomes the schema name.
     Example: ICSR.db → ATTACH DATABASE 'ICSR.db' AS ICSR
@@ -115,12 +115,12 @@ def attach_all_schema_databases(cursor: sqlite3.Cursor, settings: Settings) -> N
 
     Args:
         cursor: SQLite cursor to execute ATTACH commands on
-        settings: Settings instance for db directory path
+        settings: Settings instance for schemas_dir directory path
 
     Raises:
         sqlite3.Error: If ATTACH DATABASE command fails
     """
-    db_dir = settings.paths.input_dir / settings.paths.db_subdir
+    db_dir = settings.paths.db_dir
 
     if not db_dir.exists():
         logger.warning("Database directory not found: %s", db_dir)
