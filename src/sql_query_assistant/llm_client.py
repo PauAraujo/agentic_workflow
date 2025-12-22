@@ -141,7 +141,7 @@ class LLMClient:
             Parsed LLM response conforming to the provided schema
         """
         llm = self.get_llm(model_config)
-        structured_llm = llm.with_structured_output(schema=schema)
+        structured_llm = llm.with_structured_output(schema=schema, method="function_calling")
 
         return structured_llm.invoke(messages)
 

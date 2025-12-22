@@ -27,7 +27,7 @@ PROJECT_ROOT = _find_project_root()
 
 class PathSettings(BaseModel):
     """
-    Paths to input files and artifacts used by the workflow.
+    Paths to input/output paths used by the workflow.
 
     The base fields can be overridden via environment settings, while
     the derived properties keep call sites simple and consistent.

@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         help="Override path to table cards directory",
     )
     parser.add_argument(
+        "--schemas",
+        nargs="+",
+        help="Schema names to load table cards from (e.g., ICSR ICSR_LOOKUP). Defaults to all schemas in table_cards_dir.",
+    )
+    parser.add_argument(
         "--assumptions-file",
         type=Path,
         help="Override path to assumptions catalog YAML file",
@@ -151,6 +156,7 @@ def main():
             user_query=user_query,
             settings=settings,
             table_cards_path=args.table_cards_dir,
+            schemas=args.schemas,
             assumptions_path=args.assumptions_file,
             enable_persistence=not args.no_persist,
         )

@@ -122,7 +122,6 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
     run_id = _get_next_run_id(query_runs_file) # TODO: ensure run_id generation is atomic to prevent duplicate IDs across parallel runs
     timestamp = datetime.now().isoformat()
 
-    # Extract required artifacts (assumed present; validated upstream)
     intent_card = state["intent_card"]
     sql_draft = state["sql_draft"]
 

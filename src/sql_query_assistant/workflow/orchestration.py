@@ -5,7 +5,7 @@ from pathlib import Path
 from ..config import Settings
 from ..llm_client import create_llm_client
 from ..state import WorkflowState
-from ..utils import load_assumption_catalog, load_table_cards
+from ..utils import load_assumption_catalog, load_table_cards, transform_table_card_types
 from .main_graph import build_main_graph
 
 
@@ -16,6 +16,7 @@ def run_workflow(
     user_query: str,
     settings: Settings,
     table_cards_path: Path | None = None,
+    schemas: list[str] | None = None,
     assumptions_path: Path | None = None,
     enable_persistence: bool = True,
 ) -> WorkflowState:
@@ -26,6 +27,8 @@ def run_workflow(
         user_query: Natural language query to convert to SQL.
         settings: Settings instance for LLM + persistence.
         table_cards_path: Optional override for table cards directory.
+        schemas: Optional list of schema names to load table cards from.
+                 If None, loads from all schemas in table_cards_dir.
         assumptions_path: Optional override for assumptions catalog file.
         enable_persistence: Whether to run the persistence step.
 
@@ -33,11 +36,21 @@ def run_workflow(
         Final workflow state containing intent card, SQL draft, and optional run_id.
     """
     logger.info("Loading table cards and assumption catalog...")
-    table_cards = load_table_cards(settings=settings, base_path=table_cards_path)
+    table_cards = load_table_cards(settings=settings, base_path=table_cards_path, schemas=schemas)
     assumption_catalog = load_assumption_catalog(
         settings=settings,
         catalog_path=assumptions_path,
     )
+
+    # Transform table card types from Oracle to target dialect if needed
+    if settings.target_sql_dialect.lower() == "sqlite":
+        logger.info("Transforming table card types from Oracle to SQLite...")
+        table_cards = transform_table_card_types(
+            table_cards,
+            source_dialect="oracle",
+            target_dialect="sqlite",
+        )
+        logger.info("Table card types transformed to SQLite")
 
     llm_client = create_llm_client(settings=settings)
 
