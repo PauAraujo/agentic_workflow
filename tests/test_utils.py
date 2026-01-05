@@ -11,7 +11,9 @@ from sql_query_assistant.utils import load_assumption_catalog, load_table_cards
 
 def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_card_dict):
     """Load a single valid table card JSON file into a fully populated TableCard model."""
-    (tmp_path / "patient.json").write_text(json.dumps(sample_raw_table_card_dict))
+    schema_dir = tmp_path / "ICSR"
+    schema_dir.mkdir()
+    (schema_dir / "patient.json").write_text(json.dumps(sample_raw_table_card_dict))
 
     cards = load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
@@ -36,9 +38,11 @@ def test_load_table_cards_ignores_non_json_files(tmp_path, dummy_settings, sampl
     """
     Ignore non JSON files in the directory while still loading available JSON table cards.
     """
-    (tmp_path / "valid.json").write_text(json.dumps(sample_raw_table_card_dict))
-    (tmp_path / "ignored.txt").write_text("This should be ignored")
-    (tmp_path / "also_ignored.yaml").write_text("key: value")
+    schema_dir = tmp_path / "ICSR"
+    schema_dir.mkdir()
+    (schema_dir / "valid.json").write_text(json.dumps(sample_raw_table_card_dict))
+    (schema_dir / "ignored.txt").write_text("This should be ignored")
+    (schema_dir / "also_ignored.yaml").write_text("key: value")
 
     cards = load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
@@ -60,7 +64,9 @@ def test_load_table_cards_raises_validation_error(tmp_path, dummy_settings, inva
     """
     Raise ValidationError when table card JSON does not conform to the TableCard schema.
     """
-    (tmp_path / "invalid.json").write_text(json.dumps(invalid_data))
+    schema_dir = tmp_path / "TEST_SCHEMA"
+    schema_dir.mkdir()
+    (schema_dir / "invalid.json").write_text(json.dumps(invalid_data))
 
     with pytest.raises(ValidationError):
         load_table_cards(settings=dummy_settings, base_path=tmp_path)
@@ -99,7 +105,9 @@ def test_load_table_cards_malformed_json(tmp_path, dummy_settings):
     """
     Raise JSONDecodeError when a table card JSON file cannot be parsed.
     """
-    (tmp_path / "malformed.json").write_text("{invalid json content")
+    schema_dir = tmp_path / "TEST_SCHEMA"
+    schema_dir.mkdir()
+    (schema_dir / "malformed.json").write_text("{invalid json content")
 
     with pytest.raises(json.JSONDecodeError):
         load_table_cards(settings=dummy_settings, base_path=tmp_path)
@@ -113,7 +121,9 @@ def test_load_table_cards_with_extra_fields(tmp_path, dummy_settings, sample_raw
     data_with_extras["unexpected_field"] = "should be ignored"
     data_with_extras["another_extra"] = 12345
 
-    (tmp_path / "with_extras.json").write_text(json.dumps(data_with_extras))
+    schema_dir = tmp_path / "ICSR"
+    schema_dir.mkdir()
+    (schema_dir / "with_extras.json").write_text(json.dumps(data_with_extras))
 
     cards = load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
