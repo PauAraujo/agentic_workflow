@@ -130,6 +130,38 @@ class LangfuseSettings(EnvBaseSettings):
     )
 
 
+class AzureSearchSettings(EnvBaseSettings):
+    """
+    Settings for Azure AI Search integration.
+    """
+    endpoint: AnyHttpUrl = Field(
+        validation_alias="AZURE_SEARCH_ENDPOINT",
+        description="Azure AI Search endpoint URL"
+    )
+    admin_key: str = Field(
+        validation_alias="AZURE_SEARCH_ADMIN_KEY",
+        description="Azure AI Search admin key for indexing",
+        min_length=1
+    )
+    query_key: str = Field(
+        validation_alias="AZURE_SEARCH_QUERY_KEY",
+        description="Azure AI Search query key for searching",
+        min_length=1
+    )
+    table_cards_index_name: str = Field(
+        validation_alias="AZURE_SEARCH_TABLE_CARDS_INDEX",
+        default="sql_assistant_table_cards_index",
+        description="Name of the table cards index in Azure AI Search"
+    )
+    top_k: int = Field(
+        validation_alias="AZURE_SEARCH_TOP_K",
+        default=5,
+        description="Number of top relevant table cards to retrieve",
+        ge=1,
+        le=50
+    )
+
+
 class AwsSettings(EnvBaseSettings):
     """
     Settings for AWS Bedrock configuration.
@@ -217,6 +249,7 @@ class Settings(EnvBaseSettings):
     azure: AzureSettings = Field(default_factory=AzureSettings)
     aws: AwsSettings | None = None
     langfuse: LangfuseSettings | None = None
+    azure_search: AzureSearchSettings | None = None
 
     # Paths and workflow config
     paths: PathSettings = Field(default_factory=PathSettings)
@@ -253,6 +286,13 @@ class Settings(EnvBaseSettings):
                 self.aws = AwsSettings()
             except ValidationError:
                 self.aws = None
+
+        # Load Azure Search if available
+        if self.azure_search is None:
+            try:
+                self.azure_search = AzureSearchSettings()
+            except ValidationError:
+                self.azure_search = None
 
         return self
 
