@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sql_query_assistant.config import Settings
 
-sys.path.append(str(Path(__file__).parents[2]))
+sys.path.append(str(Path(__file__).parents[1]))
 
 DB_EXPORTS_DIR = "db_exports"
 

@@ -9,15 +9,15 @@ from typing import Any, Optional
 from datetime import datetime, timezone
 
 # Oracle configuration
-DB_HOST =
-DB_PORT =
-DB_SERVICE =
-DB_USER =
-DB_PASSWORD =
+DB_HOST = ''
+DB_PORT = 1571
+DB_SERVICE = ''
+DB_USER = ''
+DB_PASSWORD = ''
 
 # Target schema to export
 TARGET_SCHEMA = 'ICSR_LOOKUP'
-BASE_OUTPUT_DIRECTORY = '../../input/db_exports'
+BASE_OUTPUT_DIRECTORY = '../input/db_exports'
 
 # Export constants
 CSV_ROW_LIMIT = 1000
@@ -28,8 +28,40 @@ SEPARATOR = '-' * 40
 ORACLE_COLUMN_NOT_FOUND_ERROR = 'ORA-00904'
 ORACLE_SYSTEM_OWNER = 'SYS'
 FOREIGN_KEY_CONSTRAINT_TYPE = 'R'
-ALL_TAB_PRIVS_VIEW = 'ALL_TAB_PRIVS'
-OWNER_COLUMN = 'owner'
+
+# Oracle data dictionary view names
+ALL_TABLES_VIEW = 'all_tables'
+ALL_TAB_COMMENTS_VIEW = 'all_tab_comments'
+ALL_TAB_COLUMNS_VIEW = 'all_tab_columns'
+ALL_COL_COMMENTS_VIEW = 'all_col_comments'
+ALL_CONSTRAINTS_VIEW = 'all_constraints'
+ALL_CONS_COLUMNS_VIEW = 'all_cons_columns'
+ALL_INDEXES_VIEW = 'all_indexes'
+ALL_IND_COLUMNS_VIEW = 'all_ind_columns'
+ALL_TRIGGERS_VIEW = 'all_triggers'
+ALL_SYNONYMS_VIEW = 'all_synonyms'
+ALL_TAB_PRIVS_VIEW = 'all_tab_privs'
+
+# Common column names
+COL_OWNER = 'owner'
+COL_TABLE_NAME = 'table_name'
+COL_COLUMN_NAME = 'column_name'
+COL_CONSTRAINT_NAME = 'constraint_name'
+
+# Parameter names
+PARAM_SCHEMA_NAME = 'schema_name'
+PARAM_OWNER = 'owner'
+PARAM_VIEW_NAME = 'view_name'
+
+# Grant-related column names
+COL_GRANTEE = 'grantee'
+COL_PRIVILEGE = 'privilege'
+COL_GRANTABLE = 'grantable'
+COL_TYPE = 'type'
+COL_HIERARCHY = 'hierarchy'
+
+# Legacy column name (for compatibility)
+OWNER_COLUMN = COL_OWNER
 TABLE_SCHEMA_COLUMN = 'table_schema'
 
 def get_output_directory(schema_name: str, base_output_dir: str) -> str:
@@ -63,13 +95,13 @@ def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> l
         schema_name: Name of the schema to query.
     """
     cursor = connection.cursor()
-    query = """
-        SELECT table_name
-        FROM all_tables
-        WHERE owner = :schema_name
+    query = f"""
+        SELECT {COL_TABLE_NAME}
+        FROM {ALL_TABLES_VIEW}
+        WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
     """
     try:
-        cursor.execute(query, schema_name=schema_name.upper())
+        cursor.execute(query, **{PARAM_SCHEMA_NAME: schema_name.upper()})
         tables = [row[0] for row in cursor.fetchall()]
         print(f"Found {len(tables)} tables in schema '{schema_name}'.")
         return tables
@@ -175,14 +207,14 @@ def get_view_columns(connection: oracledb.Connection, view_name: str, owner: str
     """
     rows = fetch_rows(
         connection,
-        """
-        SELECT column_name
-        FROM all_tab_columns
-        WHERE owner = :owner AND table_name = :view_name
+        f"""
+        SELECT {COL_COLUMN_NAME}
+        FROM {ALL_TAB_COLUMNS_VIEW}
+        WHERE {COL_OWNER} = :{PARAM_OWNER} AND {COL_TABLE_NAME} = :{PARAM_VIEW_NAME}
         """,
-        {"owner": owner, "view_name": view_name.upper()},
+        {PARAM_OWNER: owner, PARAM_VIEW_NAME: view_name.upper()},
     )
-    return {row["column_name"].lower() for row in rows}
+    return {row[COL_COLUMN_NAME].lower() for row in rows}
 
 def export_schema_metadata(connection: oracledb.Connection, schema_name: str, output_dir: str) -> None:
     """
@@ -194,37 +226,37 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
         output_dir: Directory to save the metadata JSON file.
     """
     schema_upper = schema_name.upper()
-    schema_params = {"schema_name": schema_upper}
+    schema_params = {PARAM_SCHEMA_NAME: schema_upper}
 
     metadata = {
         "schema": schema_upper,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tables": fetch_rows(
             connection,
-            """
-            SELECT owner, table_name, tablespace_name, temporary, partitioned,
+            f"""
+            SELECT {COL_OWNER}, {COL_TABLE_NAME}, tablespace_name, temporary, partitioned,
                    compression, logging, num_rows, last_analyzed
-            FROM all_tables
-            WHERE owner = :schema_name
+            FROM {ALL_TABLES_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "table_comments": fetch_rows(
             connection,
-            """
-            SELECT owner, table_name, comments
-            FROM all_tab_comments
-            WHERE owner = :schema_name
+            f"""
+            SELECT {COL_OWNER}, {COL_TABLE_NAME}, comments
+            FROM {ALL_TAB_COMMENTS_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "columns": fetch_rows_with_optional_columns(
             connection,
-            "FROM all_tab_columns WHERE owner = :schema_name",
+            f"FROM {ALL_TAB_COLUMNS_VIEW} WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}",
             base_cols=[
-                "owner",
-                "table_name",
-                "column_name",
+                COL_OWNER,
+                COL_TABLE_NAME,
+                COL_COLUMN_NAME,
                 "column_id",
                 "data_type",
                 "data_length",
@@ -244,97 +276,97 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
         ),
         "column_comments": fetch_rows(
             connection,
-            """
-            SELECT owner, table_name, column_name, comments
-            FROM all_col_comments
-            WHERE owner = :schema_name
+            f"""
+            SELECT {COL_OWNER}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, comments
+            FROM {ALL_COL_COMMENTS_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "constraints": fetch_rows(
             connection,
-            """
-            SELECT owner, constraint_name, constraint_type, table_name,
+            f"""
+            SELECT {COL_OWNER}, {COL_CONSTRAINT_NAME}, constraint_type, {COL_TABLE_NAME},
                    search_condition, r_owner, r_constraint_name, delete_rule,
                    deferrable, deferred, status
-            FROM all_constraints
-            WHERE owner = :schema_name
+            FROM {ALL_CONSTRAINTS_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "constraint_columns": fetch_rows(
             connection,
-            """
-            SELECT owner, constraint_name, table_name, column_name, position
-            FROM all_cons_columns
-            WHERE owner = :schema_name
+            f"""
+            SELECT {COL_OWNER}, {COL_CONSTRAINT_NAME}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, position
+            FROM {ALL_CONS_COLUMNS_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "foreign_keys": fetch_rows(
             connection,
             f"""
-            SELECT c.owner, c.table_name, c.constraint_name,
-                   c.r_owner, rc.table_name AS referenced_table,
+            SELECT c.{COL_OWNER}, c.{COL_TABLE_NAME}, c.{COL_CONSTRAINT_NAME},
+                   c.r_owner, rc.{COL_TABLE_NAME} AS referenced_table,
                    c.delete_rule, c.deferrable, c.deferred, c.status,
-                   cc.column_name, cc.position,
-                   rcc.column_name AS referenced_column
-            FROM all_constraints c
-            JOIN all_cons_columns cc
-              ON c.owner = cc.owner
-             AND c.constraint_name = cc.constraint_name
-             AND c.table_name = cc.table_name
-            JOIN all_constraints rc
-              ON c.r_owner = rc.owner
-             AND c.r_constraint_name = rc.constraint_name
-            JOIN all_cons_columns rcc
-              ON rc.owner = rcc.owner
-             AND rc.constraint_name = rcc.constraint_name
-             AND rc.table_name = rcc.table_name
+                   cc.{COL_COLUMN_NAME}, cc.position,
+                   rcc.{COL_COLUMN_NAME} AS referenced_column
+            FROM {ALL_CONSTRAINTS_VIEW} c
+            JOIN {ALL_CONS_COLUMNS_VIEW} cc
+              ON c.{COL_OWNER} = cc.{COL_OWNER}
+             AND c.{COL_CONSTRAINT_NAME} = cc.{COL_CONSTRAINT_NAME}
+             AND c.{COL_TABLE_NAME} = cc.{COL_TABLE_NAME}
+            JOIN {ALL_CONSTRAINTS_VIEW} rc
+              ON c.r_owner = rc.{COL_OWNER}
+             AND c.r_constraint_name = rc.{COL_CONSTRAINT_NAME}
+            JOIN {ALL_CONS_COLUMNS_VIEW} rcc
+              ON rc.{COL_OWNER} = rcc.{COL_OWNER}
+             AND rc.{COL_CONSTRAINT_NAME} = rcc.{COL_CONSTRAINT_NAME}
+             AND rc.{COL_TABLE_NAME} = rcc.{COL_TABLE_NAME}
              AND cc.position = rcc.position
             WHERE c.constraint_type = '{FOREIGN_KEY_CONSTRAINT_TYPE}'
-              AND c.owner = :schema_name
-            ORDER BY c.table_name, c.constraint_name, cc.position
+              AND c.{COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            ORDER BY c.{COL_TABLE_NAME}, c.{COL_CONSTRAINT_NAME}, cc.position
             """,
             schema_params,
         ),
         "indexes": fetch_rows(
             connection,
-            """
-            SELECT owner, index_name, table_name, uniqueness, index_type,
+            f"""
+            SELECT {COL_OWNER}, index_name, {COL_TABLE_NAME}, uniqueness, index_type,
                    tablespace_name, compression, status
-            FROM all_indexes
-            WHERE owner = :schema_name
+            FROM {ALL_INDEXES_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "index_columns": fetch_rows(
             connection,
-            """
-            SELECT index_owner, index_name, table_name, column_name,
+            f"""
+            SELECT index_owner, index_name, {COL_TABLE_NAME}, {COL_COLUMN_NAME},
                    column_position, descend
-            FROM all_ind_columns
-            WHERE index_owner = :schema_name
+            FROM {ALL_IND_COLUMNS_VIEW}
+            WHERE index_owner = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "triggers": fetch_rows(
             connection,
-            """
-            SELECT owner, trigger_name, table_name, triggering_event,
+            f"""
+            SELECT {COL_OWNER}, trigger_name, {COL_TABLE_NAME}, triggering_event,
                    trigger_type, status, when_clause, description
-            FROM all_triggers
-            WHERE owner = :schema_name
+            FROM {ALL_TRIGGERS_VIEW}
+            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
         "grants": None,
         "synonyms": fetch_rows(
             connection,
-            """
-            SELECT owner, synonym_name, table_owner, table_name, db_link
-            FROM all_synonyms
-            WHERE table_owner = :schema_name
+            f"""
+            SELECT {COL_OWNER}, synonym_name, table_owner, {COL_TABLE_NAME}, db_link
+            FROM {ALL_SYNONYMS_VIEW}
+            WHERE table_owner = :{PARAM_SCHEMA_NAME}
             """,
             schema_params,
         ),
@@ -345,18 +377,18 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
     if owner_col in grants_columns:
         grants_select_cols = [
             owner_col,
-            "table_name",
-            "grantee",
-            "privilege",
-            "grantable",
+            COL_TABLE_NAME,
+            COL_GRANTEE,
+            COL_PRIVILEGE,
+            COL_GRANTABLE,
         ]
-        if "type" in grants_columns:
-            grants_select_cols.append("type")
-        elif "hierarchy" in grants_columns:
-            grants_select_cols.append("hierarchy")
+        if COL_TYPE in grants_columns:
+            grants_select_cols.append(COL_TYPE)
+        elif COL_HIERARCHY in grants_columns:
+            grants_select_cols.append(COL_HIERARCHY)
         grants_query = (
             f"SELECT {', '.join(grants_select_cols)} "
-            f"FROM all_tab_privs WHERE {owner_col} = :schema_name"
+            f"FROM {ALL_TAB_PRIVS_VIEW} WHERE {owner_col} = :{PARAM_SCHEMA_NAME}"
         )
         metadata["grants"] = fetch_rows(
             connection,
