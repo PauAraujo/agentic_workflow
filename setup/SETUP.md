@@ -100,11 +100,10 @@ Step 1: Export from Oracle
 ```
 # Run export (usually takes 1-5 minutes depending on schema size)
 python setup/get_oracle_exports.py
-
+```
 Output:
 - CSV files in input/db_exports/ICSR_LOOKUP/
 - _metadata.json with schema structure
-```
 
 Step 2: Build SQLite database
 ```
@@ -114,7 +113,7 @@ Step 2: Build SQLite database
 Output: `input/db/ICSR_LOOKUP.db` ready to query
 
 Step 3: Use the database
-``` 
+```python
   import sqlite3
 
   conn = sqlite3.connect('input/db/ICSR_LOOKUP.db')
@@ -173,3 +172,24 @@ Add more tables without re-exporting everything:
   1. Manually add CSV files to input/db_exports/SCHEMA_NAME/
   2. Run python setup/build_db.py
   3. New tables are added to existing database
+
+### Utilities
+
+#### Azure AI Search Connection Test
+
+Use `utilities/connect_azure_ai_search.py` to verify connectivity to your Azure AI Search service before setting up table card indexes.
+
+This diagnostic script checks whether you can successfully connect to Azure AI Search by running a simple query. If it works, you'll see confirmation with a sample document ID. If it fails, it provides helpful troubleshooting hints based on the error code.
+
+**Usage:**
+```
+python setup/utilities/connect_azure_ai_search.py
+```
+
+**Before running:**
+Edit the credentials in the script:
+```python
+ENDPOINT = "https://your-search-service.search.windows.net"
+QUERY_KEY = "your-query-key"
+INDEX_NAME = "your-index-name"
+```
