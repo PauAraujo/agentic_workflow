@@ -9,6 +9,7 @@ from sql_query_assistant.config import Settings
 
 sys.path.append(str(Path(__file__).parents[2]))
 
+DB_EXPORTS_DIR = "db_exports"
 
 def build_schema(
     schema_name: str,
@@ -16,7 +17,19 @@ def build_schema(
     settings: Settings,
     reset_db: bool = True,
 ):
-    """Creates or updates a specific schema database from a source file."""
+    """
+    Creates a SQLite schema DB from a single source file;
+    table name equals file stem.
+
+    Args:
+        schema_name: Name of the schema (used as DB filename)
+        source_file: Path to the source CSV file
+        settings: Settings instance for paths
+        reset_db: Whether to delete existing DB before creating new one
+
+    Raises:
+        ValueError: If source_file has unknown format
+    """
 
     # The filename becomes the schema name (e.g., input/db/ICSR.db)
     db_path = settings.paths.db_dir / f"{schema_name}.db"
@@ -40,17 +53,17 @@ def build_schema(
     conn = sqlite3.connect(db_path)
     try:
         # Use the filename as the table name
-        table_name = source_file.stem.split('_')[0] # e.g. PATIENT_2025 -> PATIENT
+        table_name = source_file.stem
 
         df.to_sql(table_name, conn, index=False)
-        print(f"✅ Created schema '{schema_name}' at {db_path} (Table: {table_name})")
+        print(f"Created schema '{schema_name}' at {db_path} (Table: {table_name})")
     finally:
         conn.close()
 
 def main():
     settings = Settings()
 
-    export_dir = settings.paths.input_dir / "db_exports"
+    export_dir = settings.paths.input_dir / DB_EXPORTS_DIR
     if not export_dir.exists():
         raise FileNotFoundError(f"Export directory not found: {export_dir}")
 
