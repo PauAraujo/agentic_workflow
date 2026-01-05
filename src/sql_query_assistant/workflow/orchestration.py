@@ -19,6 +19,7 @@ def run_workflow(
     schemas: list[str] | None = None,
     assumptions_path: Path | None = None,
     enable_persistence: bool = True,
+    use_rag: bool = True,
 ) -> WorkflowState:
     """
     Run the end-to-end workflow for a single query.
@@ -31,26 +32,51 @@ def run_workflow(
                  If None, loads from all schemas in table_cards_dir.
         assumptions_path: Optional override for assumptions catalog file.
         enable_persistence: Whether to run the persistence step.
+        use_rag: Whether to use RAG-based table card retrieval via Azure Search.
+                 If False or Azure Search not configured, loads all table cards upfront.
+                 Defaults to True.
 
     Returns:
         Final workflow state containing intent card, SQL draft, and optional run_id.
     """
-    logger.info("Loading table cards and assumption catalog...")
-    table_cards = load_table_cards(settings=settings, base_path=table_cards_path, schemas=schemas)
+    # Always load assumption catalog
+    logger.info("Loading assumption catalog...")
     assumption_catalog = load_assumption_catalog(
         settings=settings,
         catalog_path=assumptions_path,
     )
 
-    # Transform table card types from Oracle to target dialect if needed
-    if settings.target_sql_dialect.lower() == "sqlite":
-        logger.info("Transforming table card types from Oracle to SQLite...")
-        table_cards = transform_table_card_types(
-            table_cards,
-            source_dialect="oracle",
-            target_dialect="sqlite",
+    # Decide whether to load table cards upfront or let RAG retriever handle it
+    table_cards = []
+    if use_rag and settings.azure_search:
+        logger.info(
+            "RAG mode enabled: table cards will be retrieved dynamically by "
+            "the table_card_retriever node using Azure AI Search"
         )
-        logger.info("Table card types transformed to SQLite")
+    else:
+        if use_rag and not settings.azure_search:
+            logger.warning(
+                "RAG mode requested but Azure Search not configured; "
+                "falling back to loading all table cards"
+            )
+        else:
+            logger.info("Loading all table cards from disk...")
+
+        table_cards = load_table_cards(
+            settings=settings,
+            base_path=table_cards_path,
+            schemas=schemas
+        )
+
+        # Transform table card types from Oracle to target dialect if needed
+        if settings.target_sql_dialect.lower() == "sqlite":
+            logger.info("Transforming table card types from Oracle to SQLite...")
+            table_cards = transform_table_card_types(
+                table_cards,
+                source_dialect="oracle",
+                target_dialect="sqlite",
+            )
+            logger.info("Table card types transformed to SQLite")
 
     llm_client = create_llm_client(settings=settings)
 
