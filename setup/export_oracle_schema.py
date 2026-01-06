@@ -16,7 +16,7 @@ DB_USER = ''
 DB_PASSWORD = ''
 
 # Target schema to export
-TARGET_SCHEMA = 'ICSR_LOOKUP'
+TARGET_SCHEMA = 'ICSR'
 BASE_OUTPUT_DIRECTORY = '../input/db_exports'
 
 # Export constants
@@ -127,16 +127,27 @@ def export_table_to_csv(connection: oracledb.Connection, schema_name: str, table
         FETCH FIRST {CSV_ROW_LIMIT} ROWS ONLY
     """
 
+    cursor = connection.cursor()
     try:
-        df = pd.read_sql(query, con=connection)
+        cursor.execute(query)
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchall()
+
+        # Convert to DataFrame
+        df = pd.DataFrame(rows, columns=columns)
+
         filename = f"{table_name}.csv"
         file_path = os.path.join(output_dir, filename)
         df.to_csv(file_path, index=False)
         print(f"Exported {len(df)} rows from {table_name} to {filename}")
-    except (oracledb.DatabaseError, pd.errors.DatabaseError) as e:
+    except oracledb.DatabaseError as e:
         print(f"Skipped {table_name}: {e}")
     except TypeError as e:
         print(f"Skipped {table_name}: Cannot convert data to CSV (likely contains binary/BLOB data): {e}")
+    except UnicodeDecodeError as e:
+        print(f"Skipped {table_name}: Unicode decoding error (likely contains non-UTF-8 data): {e}")
+    finally:
+        cursor.close()
 
 def fetch_rows(connection: oracledb.Connection, query: str, params: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
     """
