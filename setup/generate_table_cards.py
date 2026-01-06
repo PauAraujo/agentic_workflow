@@ -100,6 +100,12 @@ def parse_args():
         action="store_true",
         help="Write files as lowercase table names (default).",
     )
+    parser.add_argument(
+        "--lookup-strategy",
+        choices=["full", "lightweight", "none"],
+        default="full",
+        help="Strategy for embedding lookup table data: 'full' embeds complete value maps, 'lightweight' includes row count and samples, 'none' skips lookup metadata (default: full).",
+    )
     parser.set_defaults(lowercase_filenames=True)
     return parser.parse_args()
 
@@ -234,6 +240,33 @@ def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold
     return value_map
 
 
+def load_sample_values(csv_path: Path, key_column: str, value_column: str, sample_size: int = 5) -> List[Dict[str, str]]:
+    """
+    Load sample key-value pairs from a CSV file.
+
+    Args:
+        csv_path: Path to the CSV file.
+        key_column: Name of the key column.
+        value_column: Name of the value column.
+        sample_size: Number of sample rows to load (default: 5).
+
+    Returns:
+        List of dictionaries containing sample key-value pairs.
+    """
+    samples = []
+    with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
+        reader = csv.DictReader(handle)
+        for index, row in enumerate(reader, start=1):
+            if index > sample_size:
+                break
+            key_value = row.get(key_column)
+            value = row.get(value_column)
+            if key_value is None or value is None:
+                continue
+            samples.append({"key": str(key_value), "value": str(value)})
+    return samples
+
+
 def build_foreign_keys(foreign_keys_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """
     Build foreign key metadata grouped by table name.
@@ -306,19 +339,16 @@ def _extract_primary_key_columns(
     return []
 
 
-def _generate_value_map_for_column(
+def _generate_lookup_metadata_for_column(
     foreign_key: Dict[str, Any],
     tables: Dict[str, List[Dict[str, Any]]],
     columns_by_table: Dict[str, List[Dict[str, Any]]],
     exports_dir: Path,
-    threshold: int
+    threshold: int,
+    lookup_strategy: str
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate value map metadata for a foreign key column.
-
-    Only generates value maps for foreign keys that reference tables in the
-    ICSR_LOOKUP schema and are smaller than the threshold. This prevents
-    embedding large lookup tables that would consume excessive context.
+    Generate lookup table metadata for a foreign key column based on the selected strategy.
 
     Args:
         foreign_key: Foreign key definition containing references.
@@ -326,49 +356,83 @@ def _generate_value_map_for_column(
         columns_by_table: Dictionary of columns indexed by table name.
         exports_dir: Base directory containing exported CSV files.
         threshold: Maximum table size for value map inclusion.
+        lookup_strategy: Strategy to use - 'full', 'lightweight', or 'none'.
 
     Returns:
-        Dictionary with value_map and value_map_source, or None if not applicable.
+        Dictionary with lookup metadata, or None if not applicable.
     """
+    # Skip if strategy is 'none'
+    if lookup_strategy == "none":
+        return None
+
     if threshold <= 0:
         return None
 
     ref_schema = foreign_key[FIELD_REFERENCES][FIELD_SCHEMA]
     ref_table = foreign_key[FIELD_REFERENCES]["table"]
 
-    # Only embed value maps for ICSR_LOOKUP tables
+    # Only embed lookup metadata for ICSR_LOOKUP tables
     if ref_schema != LOOKUP_SCHEMA_NAME:
         return None
 
-    # Check if referenced table is small enough
+    # Get row count for referenced table
     ref_table_rows = _get_table_row_count(tables, ref_table)
     if ref_table_rows is None or ref_table_rows > threshold:
+        print(f"  Skipping lookup metadata for {ref_table}: row_count={ref_table_rows}, threshold={threshold}")
         return None
 
     # Identify key-value columns in the referenced table
     ref_columns = columns_by_table.get(ref_table, [])
     key_column, value_column = pick_lookup_columns(ref_columns)
     if not key_column or not value_column:
+        print(f"  Skipping lookup metadata for {ref_table}: could not identify key/value columns")
         return None
 
-    # Load the value map from CSV
+    # Load data from CSV
     csv_path = exports_dir / ref_schema / f"{ref_table}{CSV_EXTENSION}"
     if not csv_path.exists():
+        print(f"  Skipping lookup metadata for {ref_table}: CSV not found at {csv_path}")
         return None
 
-    value_map = load_value_map(csv_path, key_column, value_column, threshold)
-    if value_map is None:
-        return None
+    # Generate metadata based on strategy
+    if lookup_strategy == "full":
+        # Full strategy: embed complete value map
+        value_map = load_value_map(csv_path, key_column, value_column, threshold)
+        if value_map is None:
+            print(f"  Skipping lookup metadata for {ref_table}: CSV exceeds threshold")
+            return None
 
-    return {
-        "value_map": value_map,
-        "value_map_source": {
-            FIELD_SCHEMA: ref_schema,
-            "table": ref_table,
-            "key_column": key_column,
-            "value_column": value_column,
+        print(f"  Generated full value_map for {ref_table}: {len(value_map)} entries")
+        return {
+            "value_map": value_map,
+            "value_map_source": {
+                FIELD_SCHEMA: ref_schema,
+                "table": ref_table,
+                "key_column": key_column,
+                "value_column": value_column,
+            }
         }
-    }
+
+    elif lookup_strategy == "lightweight":
+        # Lightweight strategy: embed row count and sample values
+        samples = load_sample_values(csv_path, key_column, value_column, sample_size=5)
+        if not samples:
+            print(f"  Skipping lookup metadata for {ref_table}: no samples loaded")
+            return None
+
+        print(f"  Generated lightweight lookup_info for {ref_table}: {ref_table_rows} rows, {len(samples)} samples")
+        return {
+            "lookup_info": {
+                FIELD_SCHEMA: ref_schema,
+                "table": ref_table,
+                "key_column": key_column,
+                "value_column": value_column,
+                "row_count": ref_table_rows,
+                "sample_values": samples,
+            }
+        }
+
+    return None
 
 
 def _build_column_metadata(
@@ -379,7 +443,8 @@ def _build_column_metadata(
     tables: Dict[str, List[Dict[str, Any]]],
     columns_by_table: Dict[str, List[Dict[str, Any]]],
     exports_dir: Path,
-    threshold: int
+    threshold: int,
+    lookup_strategy: str
 ) -> Dict[str, Any]:
     """
     Build metadata dictionary for a single column.
@@ -393,6 +458,7 @@ def _build_column_metadata(
         columns_by_table: Dictionary of columns indexed by table name.
         exports_dir: Base directory for exported CSV files.
         threshold: Maximum table size for value map inclusion.
+        lookup_strategy: Strategy to use for lookup metadata ('full', 'lightweight', or 'none').
 
     Returns:
         Dictionary containing column metadata.
@@ -401,9 +467,13 @@ def _build_column_metadata(
     column_metadata = {
         "name": column_name,
         "type": build_type_string(column),
-        "description": column_comments.get((table_name, column_name)) or "",
         FIELD_NULLABLE: column.get(FIELD_NULLABLE) == NULLABLE_YES,
     }
+
+    # Only add description if non-empty
+    description = column_comments.get((table_name, column_name)) or ""
+    if description:
+        column_metadata["description"] = description
 
     # Check if this column is part of a foreign key
     for foreign_key in foreign_keys:
@@ -415,22 +485,23 @@ def _build_column_metadata(
                 "column": foreign_key[FIELD_REFERENCES][FIELD_COLUMNS][column_index],
             }
 
-            # Try to generate value map for this foreign key
-            value_map_metadata = _generate_value_map_for_column(
+            # Try to generate lookup metadata for this foreign key
+            lookup_metadata = _generate_lookup_metadata_for_column(
                 foreign_key,
                 tables,
                 columns_by_table,
                 exports_dir,
-                threshold
+                threshold,
+                lookup_strategy
             )
-            if value_map_metadata:
-                column_metadata.update(value_map_metadata)
+            if lookup_metadata:
+                column_metadata.update(lookup_metadata)
             break
 
     return column_metadata
 
 
-def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir: Path, threshold: int, overwrite: bool, lowercase: bool):
+def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir: Path, threshold: int, overwrite: bool, lowercase: bool, lookup_strategy: str):
     """
     Generate table card JSON files from metadata.
 
@@ -441,12 +512,25 @@ def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir:
         threshold: Maximum lookup table size for value map embedding.
         overwrite: Whether to overwrite existing table card files.
         lowercase: Whether to use lowercase filenames.
+        lookup_strategy: Strategy for lookup metadata ('full', 'lightweight', or 'none').
     """
     schema_name = metadata[FIELD_SCHEMA]
 
     # Index metadata by table name
     tables = group_by_key(metadata.get("tables", []), FIELD_TABLE_NAME)
     columns_by_table = group_by_key(metadata.get("columns", []), FIELD_TABLE_NAME)
+
+    # Load ICSR_LOOKUP metadata if we're processing a different schema
+    # This is needed to get row counts and column info for lookup tables
+    if schema_name != LOOKUP_SCHEMA_NAME:
+        lookup_metadata_path = exports_dir / LOOKUP_SCHEMA_NAME / METADATA_FILENAME
+        if lookup_metadata_path.exists():
+            lookup_metadata = load_metadata(lookup_metadata_path)
+            # Merge lookup tables and columns into our dictionaries
+            lookup_tables = group_by_key(lookup_metadata.get("tables", []), FIELD_TABLE_NAME)
+            lookup_columns = group_by_key(lookup_metadata.get("columns", []), FIELD_TABLE_NAME)
+            tables.update(lookup_tables)
+            columns_by_table.update(lookup_columns)
     constraints_by_table = group_by_key(metadata.get("constraints", []), FIELD_TABLE_NAME)
 
     # Build lookup dictionaries for comments
@@ -480,15 +564,20 @@ def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir:
         table_foreign_keys = foreign_keys_by_table.get(table_name, [])
 
         # Build table card structure
+        table_metadata = {
+            "schema_name": schema_name,
+            "name": table_name,
+            "primary_key": primary_key_columns,
+            "row_count": _get_table_row_count(tables, table_name),
+        }
+
+        # Only add table description if non-empty
+        table_description = table_comments.get(table_name) or ""
+        if table_description:
+            table_metadata["description"] = table_description
+
         table_card = {
-            "table_metadata": {
-                "schema_name": schema_name,
-                "name": table_name,
-                "description": table_comments.get(table_name) or "",
-                "primary_key": primary_key_columns,
-                "foreign_keys": table_foreign_keys,
-                "row_count": _get_table_row_count(tables, table_name),
-            },
+            "table_metadata": table_metadata,
             FIELD_COLUMNS: [],
         }
 
@@ -502,7 +591,8 @@ def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir:
                 tables,
                 columns_by_table,
                 exports_dir,
-                threshold
+                threshold,
+                lookup_strategy
             )
             table_card[FIELD_COLUMNS].append(column_metadata)
 
@@ -556,6 +646,7 @@ def main():
             threshold=args.value_map_threshold,
             overwrite=args.overwrite,
             lowercase=args.lowercase_filenames,
+            lookup_strategy=args.lookup_strategy,
         )
 
 

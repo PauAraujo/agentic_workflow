@@ -1,5 +1,5 @@
+from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-
 
 class ForeignKeyReference(BaseModel):
     """Reference information for a foreign key."""
@@ -31,7 +31,7 @@ class TableMetadata(BaseModel):
     )
     name: str
     synonyms: list[str] = Field(default_factory=list)
-    description: str
+    description: Optional[str] = None
     primary_key: list[str] = Field(default_factory=list)
     foreign_keys: list[ForeignKey] = Field(default_factory=list)
     row_count: int | None = None
@@ -59,7 +59,7 @@ class Column(BaseModel):
 
     name: str
     type: str
-    description: str
+    description: Optional[str] = None
     nullable: bool = True
     value_map: dict[str, str] | None = None
     references: ColumnReference | None = None
