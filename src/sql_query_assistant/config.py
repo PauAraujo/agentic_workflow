@@ -71,6 +71,18 @@ class PathSettings(BaseModel):
         """The directory containing all schema database files (.db)."""
         return self.input_dir / self.schemas_dir
 
+    def get_database_path(self, schema_name: str = "ICSR") -> Path:
+        """
+        Get the path to a specific schema database file.
+
+        Args:
+            schema_name: Name of the schema (default: ICSR)
+
+        Returns:
+            Path to the schema database file
+        """
+        return self.db_dir / f"{schema_name}.db"
+
 
 class EnvBaseSettings(BaseSettings):
     """Loads environment variables"""
