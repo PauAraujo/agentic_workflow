@@ -1,0 +1,563 @@
+import csv
+import json
+import argparse
+
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from sql_query_assistant.config import Settings
+
+
+# Lookup column candidates for identifying key-value pairs in lookup tables
+KEY_COLUMN_CANDIDATES = ["ID", "CODE"]
+VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
+KEY_COLUMN_SUFFIXES = ["_ID", "_CODE"]
+VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
+
+# Metadata field names
+FIELD_TABLE_NAME = "table_name"
+FIELD_COLUMN_NAME = "column_name"
+FIELD_CONSTRAINT_NAME = "constraint_name"
+FIELD_CONSTRAINT_TYPE = "constraint_type"
+FIELD_DATA_TYPE = "data_type"
+FIELD_SCHEMA = "schema"
+FIELD_REFERENCES = "references"
+FIELD_COLUMNS = "columns"
+FIELD_POSITION = "position"
+FIELD_COMMENTS = "comments"
+FIELD_NUM_ROWS = "num_rows"
+FIELD_COLUMN_ID = "column_id"
+FIELD_NULLABLE = "nullable"
+FIELD_R_OWNER = "r_owner"
+FIELD_REFERENCED_TABLE = "referenced_table"
+FIELD_REFERENCED_COLUMN = "referenced_column"
+
+# Oracle constraint types
+CONSTRAINT_TYPE_PRIMARY = "P"
+NULLABLE_YES = "Y"
+
+# Oracle data types
+ORACLE_CHAR_TYPES = ("VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR")
+ORACLE_NUMBER_TYPE = "NUMBER"
+
+# File/path constants
+METADATA_FILENAME = "_metadata.json"
+DB_EXPORTS_DIR = "db_exports"
+JSON_EXTENSION = ".json"
+CSV_EXTENSION = ".csv"
+UTF8_ENCODING = "utf-8"
+
+# Default thresholds
+DEFAULT_VALUE_MAP_THRESHOLD = 100
+
+# Lookup schema name
+LOOKUP_SCHEMA_NAME = "ICSR_LOOKUP"
+
+
+def parse_args():
+    """
+    Parse command line arguments for table card generation.
+
+    Returns:
+        argparse.Namespace: Parsed command line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Generate table card JSON files from Oracle metadata exports."
+    )
+    parser.add_argument(
+        "--schema",
+        default=None,
+        help="Schema name to generate cards for (defaults to metadata schema).",
+    )
+    parser.add_argument(
+        "--exports-dir",
+        default=None,
+        help=f"Base exports directory (defaults to input/{DB_EXPORTS_DIR}).",
+    )
+    parser.add_argument(
+        "--metadata-file",
+        default=None,
+        help=f"Path to {METADATA_FILENAME} (defaults to exports-dir/<SCHEMA>/{METADATA_FILENAME}).",
+    )
+    parser.add_argument(
+        "--cards-dir",
+        default=None,
+        help="Output directory for table cards (defaults to input/table_cards).",
+    )
+    parser.add_argument(
+        "--value-map-threshold",
+        type=int,
+        default=DEFAULT_VALUE_MAP_THRESHOLD,
+        help=f"Max rows for ICSR_LOOKUP tables to embed value_map (default: {DEFAULT_VALUE_MAP_THRESHOLD}, 0 disables).",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing table cards.",
+    )
+    parser.add_argument(
+        "--lowercase-filenames",
+        action="store_true",
+        help="Write files as lowercase table names (default).",
+    )
+    parser.set_defaults(lowercase_filenames=True)
+    return parser.parse_args()
+
+
+def load_metadata(path: Path) -> Dict[str, Any]:
+    """
+    Load metadata from a JSON file.
+
+    Args:
+        path: Path to the metadata JSON file.
+
+    Returns:
+        Dictionary containing the metadata.
+    """
+    with path.open("r", encoding=UTF8_ENCODING) as handle:
+        return json.load(handle)
+
+
+def group_by_key(items: List[Dict[str, Any]], key: str, sort_key: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Group items by a specified key with optional sorting.
+
+    Args:
+        items: List of dictionaries to group.
+        key: The key to group by.
+        sort_key: Optional key to sort grouped items by.
+
+    Returns:
+        Dictionary mapping key values to lists of items.
+    """
+    grouped = {}
+    for item in items:
+        grouped.setdefault(item[key], []).append(item)
+
+    if sort_key:
+        for group_items in grouped.values():
+            group_items.sort(key=lambda item: item.get(sort_key) or 0)
+
+    return grouped
+
+
+def build_type_string(column: Dict[str, Any]) -> str:
+    """
+    Build a formatted type string from column metadata.
+
+    Args:
+        column: Dictionary containing column metadata with data_type, precision, scale, etc.
+
+    Returns:
+        Formatted type string (e.g., "VARCHAR2(100)", "NUMBER(10,2)").
+    """
+    data_type = column.get(FIELD_DATA_TYPE) or ""
+    precision = column.get("data_precision")
+    scale = column.get("data_scale")
+    char_length = column.get("char_length")
+    data_length = column.get("data_length")
+
+    if data_type in ORACLE_CHAR_TYPES:
+        length = char_length or data_length
+        return f"{data_type}({length})" if length else data_type
+    if data_type == ORACLE_NUMBER_TYPE and precision is not None:
+        if scale is not None:
+            return f"{ORACLE_NUMBER_TYPE}({precision},{scale})"
+        return f"{ORACLE_NUMBER_TYPE}({precision})"
+    return data_type
+
+
+def pick_lookup_columns(columns: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Identify key and value columns in a lookup table.
+
+    Attempts to identify appropriate key-value column pairs for lookup tables
+    by checking common naming patterns (ID/CODE for keys, NAME/DESC for values).
+
+    Args:
+        columns: List of column metadata dictionaries.
+
+    Returns:
+        Tuple of (key_column_name, value_column_name) or (None, None) if no suitable pair found.
+    """
+    column_names = [col[FIELD_COLUMN_NAME] for col in columns]
+    upper_names = [name.upper() for name in column_names]
+
+    def find_candidate(base_candidates: List[str], suffixes: List[str]) -> Optional[str]:
+        """Find the first matching candidate from base list or suffix patterns."""
+        candidates = base_candidates + [
+            name for name in upper_names
+            if any(name.endswith(suffix) for suffix in suffixes)
+        ]
+        for candidate in candidates:
+            if candidate in upper_names:
+                return column_names[upper_names.index(candidate)]
+        return None
+
+    key_column = find_candidate(KEY_COLUMN_CANDIDATES, KEY_COLUMN_SUFFIXES)
+    value_column = find_candidate(VALUE_COLUMN_CANDIDATES, VALUE_COLUMN_SUFFIXES)
+
+    # For two-column tables without matches, use first column as key, second as value
+    if len(column_names) == 2 and not key_column:
+        key_column = column_names[0]
+        value_column = column_names[1]
+
+    if key_column and value_column and key_column != value_column:
+        return key_column, value_column
+    return None, None
+
+
+def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold: int) -> Optional[Dict[str, str]]:
+    """
+    Load a value map from a CSV file with a row threshold.
+
+    Args:
+        csv_path: Path to the CSV file.
+        key_column: Name of the key column.
+        value_column: Name of the value column.
+        threshold: Maximum number of rows to load. Returns None if exceeded.
+
+    Returns:
+        Dictionary mapping keys to values, or None if row count exceeds threshold.
+    """
+    value_map = {}
+    with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
+        reader = csv.DictReader(handle)
+        for index, row in enumerate(reader, start=1):
+            if index > threshold:
+                return None
+            key_value = row.get(key_column)
+            value = row.get(value_column)
+            if key_value is None or value is None:
+                continue
+            value_map[str(key_value)] = str(value)
+    return value_map
+
+
+def build_foreign_keys(foreign_keys_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Build foreign key metadata grouped by table name.
+
+    Args:
+        foreign_keys_rows: List of foreign key constraint rows from metadata.
+
+    Returns:
+        Dictionary mapping table names to lists of foreign key definitions.
+    """
+    # Group by (table_name, constraint_name) composite key
+    grouped = {}
+    for row in foreign_keys_rows:
+        composite_key = (row[FIELD_TABLE_NAME], row[FIELD_CONSTRAINT_NAME])
+        grouped.setdefault(composite_key, []).append(row)
+
+    # Build foreign key structures
+    foreign_keys_by_table = {}
+    for (table_name, constraint_name), rows in grouped.items():
+        rows.sort(key=lambda r: r.get(FIELD_POSITION) or 0)
+        foreign_keys_by_table.setdefault(table_name, []).append(
+            {
+                FIELD_COLUMNS: [r[FIELD_COLUMN_NAME] for r in rows],
+                FIELD_REFERENCES: {
+                    FIELD_SCHEMA: rows[0][FIELD_R_OWNER],
+                    "table": rows[0][FIELD_REFERENCED_TABLE],
+                    FIELD_COLUMNS: [r[FIELD_REFERENCED_COLUMN] for r in rows],
+                },
+            }
+        )
+    return foreign_keys_by_table
+
+
+def _get_table_row_count(tables: Dict[str, List[Dict[str, Any]]], table_name: str) -> Optional[int]:
+    """
+    Get row count for a table from tables metadata.
+
+    Args:
+        tables: Dictionary of table metadata indexed by table name.
+        table_name: Name of the table.
+
+    Returns:
+        Row count for the table, or None if not available.
+    """
+    table_data = tables.get(table_name, [])
+    return table_data[0].get(FIELD_NUM_ROWS) if table_data else None
+
+
+def _extract_primary_key_columns(
+    constraints: List[Dict[str, Any]],
+    constraint_columns: Dict[str, List[Dict[str, Any]]]
+) -> List[str]:
+    """
+    Extract primary key column names for a table.
+
+    Args:
+        constraints: List of all constraints for the table.
+        constraint_columns: Dictionary mapping constraint names to their columns.
+
+    Returns:
+        List of primary key column names.
+    """
+    for constraint in constraints:
+        if constraint.get(FIELD_CONSTRAINT_TYPE) == CONSTRAINT_TYPE_PRIMARY:
+            constraint_name = constraint.get(FIELD_CONSTRAINT_NAME)
+            return [
+                row[FIELD_COLUMN_NAME]
+                for row in constraint_columns.get(constraint_name, [])
+            ]
+    return []
+
+
+def _generate_value_map_for_column(
+    foreign_key: Dict[str, Any],
+    tables: Dict[str, List[Dict[str, Any]]],
+    columns_by_table: Dict[str, List[Dict[str, Any]]],
+    exports_dir: Path,
+    threshold: int
+) -> Optional[Dict[str, Any]]:
+    """
+    Generate value map metadata for a foreign key column.
+
+    Only generates value maps for foreign keys that reference tables in the
+    ICSR_LOOKUP schema and are smaller than the threshold. This prevents
+    embedding large lookup tables that would consume excessive context.
+
+    Args:
+        foreign_key: Foreign key definition containing references.
+        tables: Dictionary of table metadata indexed by table name.
+        columns_by_table: Dictionary of columns indexed by table name.
+        exports_dir: Base directory containing exported CSV files.
+        threshold: Maximum table size for value map inclusion.
+
+    Returns:
+        Dictionary with value_map and value_map_source, or None if not applicable.
+    """
+    if threshold <= 0:
+        return None
+
+    ref_schema = foreign_key[FIELD_REFERENCES][FIELD_SCHEMA]
+    ref_table = foreign_key[FIELD_REFERENCES]["table"]
+
+    # Only embed value maps for ICSR_LOOKUP tables
+    if ref_schema != LOOKUP_SCHEMA_NAME:
+        return None
+
+    # Check if referenced table is small enough
+    ref_table_rows = _get_table_row_count(tables, ref_table)
+    if ref_table_rows is None or ref_table_rows > threshold:
+        return None
+
+    # Identify key-value columns in the referenced table
+    ref_columns = columns_by_table.get(ref_table, [])
+    key_column, value_column = pick_lookup_columns(ref_columns)
+    if not key_column or not value_column:
+        return None
+
+    # Load the value map from CSV
+    csv_path = exports_dir / ref_schema / f"{ref_table}{CSV_EXTENSION}"
+    if not csv_path.exists():
+        return None
+
+    value_map = load_value_map(csv_path, key_column, value_column, threshold)
+    if value_map is None:
+        return None
+
+    return {
+        "value_map": value_map,
+        "value_map_source": {
+            FIELD_SCHEMA: ref_schema,
+            "table": ref_table,
+            "key_column": key_column,
+            "value_column": value_column,
+        }
+    }
+
+
+def _build_column_metadata(
+    column: Dict[str, Any],
+    table_name: str,
+    column_comments: Dict[Tuple[str, str], str],
+    foreign_keys: List[Dict[str, Any]],
+    tables: Dict[str, List[Dict[str, Any]]],
+    columns_by_table: Dict[str, List[Dict[str, Any]]],
+    exports_dir: Path,
+    threshold: int
+) -> Dict[str, Any]:
+    """
+    Build metadata dictionary for a single column.
+
+    Args:
+        column: Column metadata from database.
+        table_name: Name of the table containing this column.
+        column_comments: Dictionary of column comments.
+        foreign_keys: List of foreign key definitions for the table.
+        tables: Dictionary of table metadata.
+        columns_by_table: Dictionary of columns indexed by table name.
+        exports_dir: Base directory for exported CSV files.
+        threshold: Maximum table size for value map inclusion.
+
+    Returns:
+        Dictionary containing column metadata.
+    """
+    column_name = column[FIELD_COLUMN_NAME]
+    column_metadata = {
+        "name": column_name,
+        "type": build_type_string(column),
+        "description": column_comments.get((table_name, column_name)) or "",
+        FIELD_NULLABLE: column.get(FIELD_NULLABLE) == NULLABLE_YES,
+    }
+
+    # Check if this column is part of a foreign key
+    for foreign_key in foreign_keys:
+        if column_name in foreign_key[FIELD_COLUMNS]:
+            column_index = foreign_key[FIELD_COLUMNS].index(column_name)
+            column_metadata[FIELD_REFERENCES] = {
+                FIELD_SCHEMA: foreign_key[FIELD_REFERENCES][FIELD_SCHEMA],
+                "table": foreign_key[FIELD_REFERENCES]["table"],
+                "column": foreign_key[FIELD_REFERENCES][FIELD_COLUMNS][column_index],
+            }
+
+            # Try to generate value map for this foreign key
+            value_map_metadata = _generate_value_map_for_column(
+                foreign_key,
+                tables,
+                columns_by_table,
+                exports_dir,
+                threshold
+            )
+            if value_map_metadata:
+                column_metadata.update(value_map_metadata)
+            break
+
+    return column_metadata
+
+
+def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir: Path, threshold: int, overwrite: bool, lowercase: bool):
+    """
+    Generate table card JSON files from metadata.
+
+    Args:
+        metadata: Metadata dictionary containing tables, columns, constraints, etc.
+        exports_dir: Base directory containing exported CSV files.
+        cards_dir: Output directory for generated table card JSON files.
+        threshold: Maximum lookup table size for value map embedding.
+        overwrite: Whether to overwrite existing table card files.
+        lowercase: Whether to use lowercase filenames.
+    """
+    schema_name = metadata[FIELD_SCHEMA]
+
+    # Index metadata by table name
+    tables = group_by_key(metadata.get("tables", []), FIELD_TABLE_NAME)
+    columns_by_table = group_by_key(metadata.get("columns", []), FIELD_TABLE_NAME)
+    constraints_by_table = group_by_key(metadata.get("constraints", []), FIELD_TABLE_NAME)
+
+    # Build lookup dictionaries for comments
+    table_comments = {
+        row[FIELD_TABLE_NAME]: row.get(FIELD_COMMENTS)
+        for row in metadata.get("table_comments", [])
+    }
+    column_comments = {
+        (row[FIELD_TABLE_NAME], row[FIELD_COLUMN_NAME]): row.get(FIELD_COMMENTS)
+        for row in metadata.get("column_comments", [])
+    }
+
+    # Build constraint and foreign key structures
+    constraint_columns = group_by_key(metadata.get("constraint_columns", []), FIELD_CONSTRAINT_NAME, sort_key=FIELD_POSITION)
+    foreign_keys_by_table = build_foreign_keys(metadata.get("foreign_keys", []))
+
+    cards_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate table cards
+    for table_name, columns in columns_by_table.items():
+        columns.sort(key=lambda col: col.get(FIELD_COLUMN_ID) or 0)
+
+        # Extract primary key columns
+        table_constraints = constraints_by_table.get(table_name, [])
+        primary_key_columns = _extract_primary_key_columns(
+            table_constraints,
+            constraint_columns
+        )
+
+        # Get foreign keys for this table
+        table_foreign_keys = foreign_keys_by_table.get(table_name, [])
+
+        # Build table card structure
+        table_card = {
+            "table_metadata": {
+                "schema_name": schema_name,
+                "name": table_name,
+                "description": table_comments.get(table_name) or "",
+                "primary_key": primary_key_columns,
+                "foreign_keys": table_foreign_keys,
+                "row_count": _get_table_row_count(tables, table_name),
+            },
+            FIELD_COLUMNS: [],
+        }
+
+        # Build metadata for each column
+        for column in columns:
+            column_metadata = _build_column_metadata(
+                column,
+                table_name,
+                column_comments,
+                table_foreign_keys,
+                tables,
+                columns_by_table,
+                exports_dir,
+                threshold
+            )
+            table_card[FIELD_COLUMNS].append(column_metadata)
+
+        # Write table card to file
+        filename = f"{table_name}{JSON_EXTENSION}"
+        if lowercase:
+            filename = filename.lower()
+        output_path = cards_dir / filename
+
+        if output_path.exists() and not overwrite:
+            continue
+
+        with output_path.open("w", encoding=UTF8_ENCODING) as handle:
+            json.dump(table_card, handle, indent=2)
+
+
+def main():
+    """
+    Main entry point for table card generation.
+
+    Parses command line arguments, loads metadata files, and generates table cards
+    for each schema found in the metadata.
+    """
+    args = parse_args()
+    settings = Settings()
+
+    # Resolve directory paths with defaults
+    exports_dir = Path(args.exports_dir or settings.paths.input_dir / DB_EXPORTS_DIR)
+    cards_dir = Path(args.cards_dir or settings.paths.table_cards_dir)
+
+    # Determine which metadata files to process
+    if args.metadata_file:
+        metadata_paths = [Path(args.metadata_file)]
+    elif args.schema:
+        metadata_paths = [exports_dir / args.schema / METADATA_FILENAME]
+    else:
+        metadata_paths = sorted(exports_dir.glob(f"*/*{METADATA_FILENAME}"))
+        if not metadata_paths:
+            raise ValueError("No metadata files found. Provide --schema or --metadata-file.")
+
+    # Process each metadata file
+    for metadata_path in metadata_paths:
+        metadata = load_metadata(metadata_path)
+        schema_name = metadata[FIELD_SCHEMA]
+        schema_cards_dir = cards_dir / schema_name
+
+        generate_table_cards(
+            metadata,
+            exports_dir,
+            schema_cards_dir,
+            threshold=args.value_map_threshold,
+            overwrite=args.overwrite,
+            lowercase=args.lowercase_filenames,
+        )
+
+
+if __name__ == "__main__":
+    main()
