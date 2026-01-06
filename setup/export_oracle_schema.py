@@ -88,7 +88,7 @@ def get_connection() -> oracledb.Connection:
 
 def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> list[str]:
     """
-    Retrieves a list of table names for the given schema.
+    Retrieves a list of table names for the given schema, excluding Oracle system tables.
 
     Args:
         connection: Active Oracle database connection.
@@ -99,11 +99,15 @@ def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> l
         SELECT {COL_TABLE_NAME}
         FROM {ALL_TABLES_VIEW}
         WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+          AND {COL_TABLE_NAME} NOT LIKE 'DR$%'
+          AND {COL_TABLE_NAME} NOT LIKE 'BIN$%'
+          AND {COL_TABLE_NAME} NOT LIKE 'MLOG$%'
+          AND {COL_TABLE_NAME} NOT LIKE 'RUPD$%'
     """
     try:
         cursor.execute(query, **{PARAM_SCHEMA_NAME: schema_name.upper()})
         tables = [row[0] for row in cursor.fetchall()]
-        print(f"Found {len(tables)} tables in schema '{schema_name}'.")
+        print(f"Found {len(tables)} tables in schema '{schema_name}' (excluding Oracle system tables).")
         return tables
     finally:
         cursor.close()
