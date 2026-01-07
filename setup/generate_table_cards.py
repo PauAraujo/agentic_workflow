@@ -3,7 +3,7 @@ import json
 import argparse
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from sql_query_assistant.config import Settings
 
@@ -11,7 +11,7 @@ from sql_query_assistant.config import Settings
 # Lookup column candidates for identifying key-value pairs in lookup tables
 KEY_COLUMN_CANDIDATES = ["ID", "CODE"]
 VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
-KEY_COLUMN_SUFFIXES = ["_ID", "_CODE"]
+KEY_COLUMN_SUFFIXES = ["_CODE", "_ID"]  # Prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
 VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
 
 # Metadata field names
@@ -104,13 +104,13 @@ def parse_args():
         "--lookup-strategy",
         choices=["full", "lightweight", "none"],
         default="full",
-        help="Strategy for embedding lookup table data: 'full' embeds complete value maps, 'lightweight' includes row count and samples, 'none' skips lookup metadata (default: full).",
+        help="Strategy for embedding lookup table data: 'full' embeds complete value maps (or samples if exceeds threshold), 'lightweight' includes row count and samples only, 'none' skips lookup metadata (default: full).",
     )
     parser.set_defaults(lowercase_filenames=True)
     return parser.parse_args()
 
 
-def load_metadata(path: Path) -> Dict[str, Any]:
+def load_metadata(path: Path) -> dict[str, Any]:
     """
     Load metadata from a JSON file.
 
@@ -118,23 +118,23 @@ def load_metadata(path: Path) -> Dict[str, Any]:
         path: Path to the metadata JSON file.
 
     Returns:
-        Dictionary containing the metadata.
+        dictionary containing the metadata.
     """
     with path.open("r", encoding=UTF8_ENCODING) as handle:
         return json.load(handle)
 
 
-def group_by_key(items: List[Dict[str, Any]], key: str, sort_key: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def group_by_key(items: list[dict[str, Any]], key: str, sort_key: Optional[str] = None) -> dict[str, list[dict[str, Any]]]:
     """
     Group items by a specified key with optional sorting.
 
     Args:
-        items: List of dictionaries to group.
+        items: list of dictionaries to group.
         key: The key to group by.
         sort_key: Optional key to sort grouped items by.
 
     Returns:
-        Dictionary mapping key values to lists of items.
+        dictionary mapping key values to lists of items.
     """
     grouped = {}
     for item in items:
@@ -147,12 +147,12 @@ def group_by_key(items: List[Dict[str, Any]], key: str, sort_key: Optional[str] 
     return grouped
 
 
-def build_type_string(column: Dict[str, Any]) -> str:
+def build_type_string(column: dict[str, Any]) -> str:
     """
     Build a formatted type string from column metadata.
 
     Args:
-        column: Dictionary containing column metadata with data_type, precision, scale, etc.
+        column: dictionary containing column metadata with data_type, precision, scale, etc.
 
     Returns:
         Formatted type string (e.g., "VARCHAR2(100)", "NUMBER(10,2)").
@@ -173,15 +173,17 @@ def build_type_string(column: Dict[str, Any]) -> str:
     return data_type
 
 
-def pick_lookup_columns(columns: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str]]:
+def pick_lookup_columns(columns: list[dict[str, Any]], table_name: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Identify key and value columns in a lookup table.
 
     Attempts to identify appropriate key-value column pairs for lookup tables
     by checking common naming patterns (ID/CODE for keys, NAME/DESC for values).
+    Prioritizes columns that match the table name (e.g., TIME_INTERVAL_ID for TIME_INTERVAL table).
 
     Args:
-        columns: List of column metadata dictionaries.
+        columns: list of column metadata dictionaries.
+        table_name: Optional table name to help identify the primary key column.
 
     Returns:
         Tuple of (key_column_name, value_column_name) or (None, None) if no suitable pair found.
@@ -189,15 +191,27 @@ def pick_lookup_columns(columns: List[Dict[str, Any]]) -> Tuple[Optional[str], O
     column_names = [col[FIELD_COLUMN_NAME] for col in columns]
     upper_names = [name.upper() for name in column_names]
 
-    def find_candidate(base_candidates: List[str], suffixes: List[str]) -> Optional[str]:
-        """Find the first matching candidate from base list or suffix patterns."""
-        candidates = base_candidates + [
-            name for name in upper_names
-            if any(name.endswith(suffix) for suffix in suffixes)
-        ]
-        for candidate in candidates:
+    def find_candidate(base_candidates: list[str], suffixes: list[str]) -> Optional[str]:
+        """Find the first matching candidate, prioritizing table name matches."""
+        # First priority: column that matches table_name + suffix (e.g., TIME_INTERVAL_ID for TIME_INTERVAL table)
+        if table_name:
+            upper_table = table_name.upper()
+            for suffix in suffixes:
+                table_specific_col = f"{upper_table}{suffix}"
+                if table_specific_col in upper_names:
+                    return column_names[upper_names.index(table_specific_col)]
+
+        # Second priority: exact matches like "ID", "CODE"
+        for candidate in base_candidates:
             if candidate in upper_names:
                 return column_names[upper_names.index(candidate)]
+
+        # Third priority: suffix patterns in order
+        for suffix in suffixes:
+            for upper_name, original_name in zip(upper_names, column_names):
+                if upper_name.endswith(suffix):
+                    return original_name
+
         return None
 
     key_column = find_candidate(KEY_COLUMN_CANDIDATES, KEY_COLUMN_SUFFIXES)
@@ -213,7 +227,7 @@ def pick_lookup_columns(columns: List[Dict[str, Any]]) -> Tuple[Optional[str], O
     return None, None
 
 
-def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold: int) -> Optional[Dict[str, str]]:
+def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold: int) -> Optional[dict[str, str]]:
     """
     Load a value map from a CSV file with a row threshold.
 
@@ -224,23 +238,24 @@ def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold
         threshold: Maximum number of rows to load. Returns None if exceeded.
 
     Returns:
-        Dictionary mapping keys to values, or None if row count exceeds threshold.
+        dictionary mapping keys to values, or None if row count exceeds threshold.
     """
     value_map = {}
     with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-        reader = csv.DictReader(handle)
+        reader = csv.dictReader(handle)
         for index, row in enumerate(reader, start=1):
             if index > threshold:
                 return None
             key_value = row.get(key_column)
             value = row.get(value_column)
-            if key_value is None or value is None:
+            # Skip rows with None, empty string, or whitespace-only keys/values
+            if key_value is None or not str(key_value).strip() or value is None or not str(value).strip():
                 continue
             value_map[str(key_value)] = str(value)
     return value_map
 
 
-def load_sample_values(csv_path: Path, key_column: str, value_column: str, sample_size: int = 5) -> List[Dict[str, str]]:
+def load_sample_values(csv_path: Path, key_column: str, value_column: str, sample_size: int = 5) -> list[dict[str, str]]:
     """
     Load sample key-value pairs from a CSV file.
 
@@ -251,31 +266,32 @@ def load_sample_values(csv_path: Path, key_column: str, value_column: str, sampl
         sample_size: Number of sample rows to load (default: 5).
 
     Returns:
-        List of dictionaries containing sample key-value pairs.
+        list of dictionaries containing sample key-value pairs.
     """
     samples = []
     with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-        reader = csv.DictReader(handle)
-        for index, row in enumerate(reader, start=1):
-            if index > sample_size:
-                break
+        reader = csv.dictReader(handle)
+        for row in reader:
             key_value = row.get(key_column)
             value = row.get(value_column)
-            if key_value is None or value is None:
+            # Skip rows with None, empty string, or whitespace-only keys/values
+            if key_value is None or not str(key_value).strip() or value is None or not str(value).strip():
                 continue
             samples.append({"key": str(key_value), "value": str(value)})
+            if len(samples) >= sample_size:
+                break
     return samples
 
 
-def build_foreign_keys(foreign_keys_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def build_foreign_keys(foreign_keys_rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """
     Build foreign key metadata grouped by table name.
 
     Args:
-        foreign_keys_rows: List of foreign key constraint rows from metadata.
+        foreign_keys_rows: list of foreign key constraint rows from metadata.
 
     Returns:
-        Dictionary mapping table names to lists of foreign key definitions.
+        dictionary mapping table names to lists of foreign key definitions.
     """
     # Group by (table_name, constraint_name) composite key
     grouped = {}
@@ -300,12 +316,12 @@ def build_foreign_keys(foreign_keys_rows: List[Dict[str, Any]]) -> Dict[str, Lis
     return foreign_keys_by_table
 
 
-def _get_table_row_count(tables: Dict[str, List[Dict[str, Any]]], table_name: str) -> Optional[int]:
+def _get_table_row_count(tables: dict[str, list[dict[str, Any]]], table_name: str) -> Optional[int]:
     """
     Get row count for a table from tables metadata.
 
     Args:
-        tables: Dictionary of table metadata indexed by table name.
+        tables: dictionary of table metadata indexed by table name.
         table_name: Name of the table.
 
     Returns:
@@ -316,18 +332,18 @@ def _get_table_row_count(tables: Dict[str, List[Dict[str, Any]]], table_name: st
 
 
 def _extract_primary_key_columns(
-    constraints: List[Dict[str, Any]],
-    constraint_columns: Dict[str, List[Dict[str, Any]]]
-) -> List[str]:
+    constraints: list[dict[str, Any]],
+    constraint_columns: dict[str, list[dict[str, Any]]]
+) -> list[str]:
     """
     Extract primary key column names for a table.
 
     Args:
-        constraints: List of all constraints for the table.
-        constraint_columns: Dictionary mapping constraint names to their columns.
+        constraints: list of all constraints for the table.
+        constraint_columns: dictionary mapping constraint names to their columns.
 
     Returns:
-        List of primary key column names.
+        list of primary key column names.
     """
     for constraint in constraints:
         if constraint.get(FIELD_CONSTRAINT_TYPE) == CONSTRAINT_TYPE_PRIMARY:
@@ -340,26 +356,30 @@ def _extract_primary_key_columns(
 
 
 def _generate_lookup_metadata_for_column(
-    foreign_key: Dict[str, Any],
-    tables: Dict[str, List[Dict[str, Any]]],
-    columns_by_table: Dict[str, List[Dict[str, Any]]],
+    foreign_key: dict[str, Any],
+    tables: dict[str, list[dict[str, Any]]],
+    columns_by_table: dict[str, list[dict[str, Any]]],
     exports_dir: Path,
     threshold: int,
-    lookup_strategy: str
-) -> Optional[Dict[str, Any]]:
+    lookup_strategy: str,
+    ref_column: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
     """
     Generate lookup table metadata for a foreign key column based on the selected strategy.
 
     Args:
         foreign_key: Foreign key definition containing references.
-        tables: Dictionary of table metadata indexed by table name.
-        columns_by_table: Dictionary of columns indexed by table name.
+        tables: dictionary of table metadata indexed by table name.
+        columns_by_table: dictionary of columns indexed by table name.
         exports_dir: Base directory containing exported CSV files.
         threshold: Maximum table size for value map inclusion.
-        lookup_strategy: Strategy to use - 'full', 'lightweight', or 'none'.
+        lookup_strategy: Strategy to use:
+            - 'full': Embed complete value_map if within threshold, otherwise fall back to value_map_partial with samples
+            - 'lightweight': Always embed row_count and sample values only
+            - 'none': Skip all lookup metadata
 
     Returns:
-        Dictionary with lookup metadata, or None if not applicable.
+        dictionary with lookup metadata, or None if not applicable.
     """
     # Skip if strategy is 'none'
     if lookup_strategy == "none":
@@ -377,16 +397,18 @@ def _generate_lookup_metadata_for_column(
 
     # Get row count for referenced table
     ref_table_rows = _get_table_row_count(tables, ref_table)
-    if ref_table_rows is None or ref_table_rows > threshold:
-        print(f"  Skipping lookup metadata for {ref_table}: row_count={ref_table_rows}, threshold={threshold}")
-        return None
 
     # Identify key-value columns in the referenced table
     ref_columns = columns_by_table.get(ref_table, [])
-    key_column, value_column = pick_lookup_columns(ref_columns)
+    key_column, value_column = pick_lookup_columns(ref_columns, table_name=ref_table)
+    if ref_column and any(col.get(FIELD_COLUMN_NAME) == ref_column for col in ref_columns):
+        key_column = ref_column
     if not key_column or not value_column:
         print(f"  Skipping lookup metadata for {ref_table}: could not identify key/value columns")
         return None
+    # DEBUG: Uncomment to troubleshoot column selection
+    # col_names = [c.get('column_name') for c in ref_columns]
+    # print(f"  DEBUG: {ref_table} has columns {col_names}, picked key={key_column}, value={value_column}")
 
     # Load data from CSV
     csv_path = exports_dir / ref_schema / f"{ref_table}{CSV_EXTENSION}"
@@ -396,11 +418,30 @@ def _generate_lookup_metadata_for_column(
 
     # Generate metadata based on strategy
     if lookup_strategy == "full":
-        # Full strategy: embed complete value map
+        # Full strategy: embed complete value map, or samples if too large
         value_map = load_value_map(csv_path, key_column, value_column, threshold)
+
         if value_map is None:
-            print(f"  Skipping lookup metadata for {ref_table}: CSV exceeds threshold")
-            return None
+            # Too large for full map - fall back to samples
+            samples = load_sample_values(csv_path, key_column, value_column, sample_size=5)
+            if not samples:
+                print(f"  Skipping lookup metadata for {ref_table}: no samples loaded")
+                return None
+
+            # Convert samples list to dictionary format
+            value_map_partial = {s["key"]: s["value"] for s in samples}
+            print(f"  Generated partial value_map for {ref_table}: {ref_table_rows} rows (showing {len(value_map_partial)} samples)")
+            return {
+                "value_map_partial": value_map_partial,
+                "value_map_source": {
+                    FIELD_SCHEMA: ref_schema,
+                    "table": ref_table,
+                    "key_column": key_column,
+                    "value_column": value_column,
+                    "row_count": ref_table_rows,
+                    "is_partial": True,
+                }
+            }
 
         print(f"  Generated full value_map for {ref_table}: {len(value_map)} entries")
         return {
@@ -436,32 +477,32 @@ def _generate_lookup_metadata_for_column(
 
 
 def _build_column_metadata(
-    column: Dict[str, Any],
+    column: dict[str, Any],
     table_name: str,
-    column_comments: Dict[Tuple[str, str], str],
-    foreign_keys: List[Dict[str, Any]],
-    tables: Dict[str, List[Dict[str, Any]]],
-    columns_by_table: Dict[str, List[Dict[str, Any]]],
+    column_comments: dict[Tuple[str, str], str],
+    foreign_keys: list[dict[str, Any]],
+    tables: dict[str, list[dict[str, Any]]],
+    columns_by_table: dict[str, list[dict[str, Any]]],
     exports_dir: Path,
     threshold: int,
     lookup_strategy: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build metadata dictionary for a single column.
 
     Args:
         column: Column metadata from database.
         table_name: Name of the table containing this column.
-        column_comments: Dictionary of column comments.
-        foreign_keys: List of foreign key definitions for the table.
-        tables: Dictionary of table metadata.
-        columns_by_table: Dictionary of columns indexed by table name.
+        column_comments: dictionary of column comments.
+        foreign_keys: list of foreign key definitions for the table.
+        tables: dictionary of table metadata.
+        columns_by_table: dictionary of columns indexed by table name.
         exports_dir: Base directory for exported CSV files.
         threshold: Maximum table size for value map inclusion.
         lookup_strategy: Strategy to use for lookup metadata ('full', 'lightweight', or 'none').
 
     Returns:
-        Dictionary containing column metadata.
+        dictionary containing column metadata.
     """
     column_name = column[FIELD_COLUMN_NAME]
     column_metadata = {
@@ -486,13 +527,15 @@ def _build_column_metadata(
             }
 
             # Try to generate lookup metadata for this foreign key
+            ref_column = foreign_key[FIELD_REFERENCES][FIELD_COLUMNS][column_index]
             lookup_metadata = _generate_lookup_metadata_for_column(
                 foreign_key,
                 tables,
                 columns_by_table,
                 exports_dir,
                 threshold,
-                lookup_strategy
+                lookup_strategy,
+                ref_column=ref_column,
             )
             if lookup_metadata:
                 column_metadata.update(lookup_metadata)
@@ -501,7 +544,7 @@ def _build_column_metadata(
     return column_metadata
 
 
-def generate_table_cards(metadata: Dict[str, Any], exports_dir: Path, cards_dir: Path, threshold: int, overwrite: bool, lowercase: bool, lookup_strategy: str):
+def generate_table_cards(metadata: dict[str, Any], exports_dir: Path, cards_dir: Path, threshold: int, overwrite: bool, lowercase: bool, lookup_strategy: str):
     """
     Generate table card JSON files from metadata.
 
