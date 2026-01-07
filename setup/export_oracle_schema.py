@@ -16,7 +16,7 @@ DB_USER = ''
 DB_PASSWORD = ''
 
 # Target schema to export
-TARGET_SCHEMA = 'ICSR'
+TARGET_SCHEMA = 'ICSR_LOOKUP'
 BASE_OUTPUT_DIRECTORY = '../input/db_exports'
 
 # Export constants
@@ -28,6 +28,16 @@ SEPARATOR = '-' * 40
 ORACLE_COLUMN_NOT_FOUND_ERROR = 'ORA-00904'
 ORACLE_SYSTEM_OWNER = 'SYS'
 FOREIGN_KEY_CONSTRAINT_TYPE = 'R'
+
+# System table exclusion filters
+SYSTEM_TABLE_FILTERS = """
+    AND {table_col} NOT LIKE 'DR$%'
+    AND {table_col} NOT LIKE 'BIN$%'
+    AND {table_col} NOT LIKE 'MLOG$%'
+    AND {table_col} NOT LIKE 'RUPD$%'
+    AND {table_col} NOT LIKE 'ZZ_%'
+    AND {table_col} NOT LIKE 'RV$%'
+"""
 
 # Oracle data dictionary view names
 ALL_TABLES_VIEW = 'all_tables'
@@ -95,14 +105,12 @@ def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> l
         schema_name: Name of the schema to query.
     """
     cursor = connection.cursor()
+    filters = SYSTEM_TABLE_FILTERS.format(table_col=COL_TABLE_NAME)
     query = f"""
         SELECT {COL_TABLE_NAME}
         FROM {ALL_TABLES_VIEW}
         WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
-          AND {COL_TABLE_NAME} NOT LIKE 'DR$%'
-          AND {COL_TABLE_NAME} NOT LIKE 'BIN$%'
-          AND {COL_TABLE_NAME} NOT LIKE 'MLOG$%'
-          AND {COL_TABLE_NAME} NOT LIKE 'RUPD$%'
+        {filters}
     """
     try:
         cursor.execute(query, **{PARAM_SCHEMA_NAME: schema_name.upper()})
@@ -243,6 +251,9 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
     schema_upper = schema_name.upper()
     schema_params = {PARAM_SCHEMA_NAME: schema_upper}
 
+    # Apply system table filters
+    table_filters = SYSTEM_TABLE_FILTERS.format(table_col=COL_TABLE_NAME)
+
     metadata = {
         "schema": schema_upper,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -253,6 +264,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
                    compression, logging, num_rows, last_analyzed
             FROM {ALL_TABLES_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -262,12 +274,13 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
             SELECT {COL_OWNER}, {COL_TABLE_NAME}, comments
             FROM {ALL_TAB_COMMENTS_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
         "columns": fetch_rows_with_optional_columns(
             connection,
-            f"FROM {ALL_TAB_COLUMNS_VIEW} WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}",
+            f"FROM {ALL_TAB_COLUMNS_VIEW} WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME} {table_filters}",
             base_cols=[
                 COL_OWNER,
                 COL_TABLE_NAME,
@@ -295,6 +308,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
             SELECT {COL_OWNER}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, comments
             FROM {ALL_COL_COMMENTS_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -306,6 +320,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
                    deferrable, deferred, status
             FROM {ALL_CONSTRAINTS_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -315,6 +330,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
             SELECT {COL_OWNER}, {COL_CONSTRAINT_NAME}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, position
             FROM {ALL_CONS_COLUMNS_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -341,6 +357,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
              AND cc.position = rcc.position
             WHERE c.constraint_type = '{FOREIGN_KEY_CONSTRAINT_TYPE}'
               AND c.{COL_OWNER} = :{PARAM_SCHEMA_NAME}
+              {SYSTEM_TABLE_FILTERS.format(table_col=f'c.{COL_TABLE_NAME}')}
             ORDER BY c.{COL_TABLE_NAME}, c.{COL_CONSTRAINT_NAME}, cc.position
             """,
             schema_params,
@@ -352,6 +369,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
                    tablespace_name, compression, status
             FROM {ALL_INDEXES_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -362,6 +380,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
                    column_position, descend
             FROM {ALL_IND_COLUMNS_VIEW}
             WHERE index_owner = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -372,6 +391,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
                    trigger_type, status, when_clause, description
             FROM {ALL_TRIGGERS_VIEW}
             WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -382,6 +402,7 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
             SELECT {COL_OWNER}, synonym_name, table_owner, {COL_TABLE_NAME}, db_link
             FROM {ALL_SYNONYMS_VIEW}
             WHERE table_owner = :{PARAM_SCHEMA_NAME}
+            {table_filters}
             """,
             schema_params,
         ),
@@ -403,7 +424,8 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
             grants_select_cols.append(COL_HIERARCHY)
         grants_query = (
             f"SELECT {', '.join(grants_select_cols)} "
-            f"FROM {ALL_TAB_PRIVS_VIEW} WHERE {owner_col} = :{PARAM_SCHEMA_NAME}"
+            f"FROM {ALL_TAB_PRIVS_VIEW} WHERE {owner_col} = :{PARAM_SCHEMA_NAME} "
+            f"{table_filters}"
         )
         metadata["grants"] = fetch_rows(
             connection,
