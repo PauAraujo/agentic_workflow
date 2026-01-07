@@ -1,6 +1,7 @@
 import logging
 
 from azure.core.credentials import AzureKeyCredential
+from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
@@ -23,6 +24,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Analyzer constants
+ANALYZER_ENGLISH = "en.microsoft"
+ANALYZER_KEYWORD = "keyword"
+
+# Semantic configuration name
+SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
+
+# Field names
+FIELD_ID = "id"
+FIELD_SCHEMA_NAME = "schema_name"
+FIELD_TABLE_NAME = "table_name"
+FIELD_QUALIFIED_NAME = "qualified_name"
+FIELD_DESCRIPTION = "description"
+FIELD_COLUMN_NAMES = "column_names"
+FIELD_COLUMN_DESCRIPTIONS = "column_descriptions"
+FIELD_SEARCHABLE_CONTENT = "searchable_content"
+FIELD_ROW_COUNT = "row_count"
+FIELD_COLUMN_COUNT = "column_count"
+
+# ID sanitization
+UNSAFE_ID_CHARS = ['$', '.', '/', '\\', '#', '?']
+SAFE_ID_REPLACEMENT = '_'
+
 
 def create_table_cards_index(
     endpoint: str,
@@ -41,80 +65,89 @@ def create_table_cards_index(
     """
     index_client = SearchIndexClient(endpoint, AzureKeyCredential(admin_key))
 
-    # Delete existing index if requested
-    if delete_if_exists:
-        try:
-            logger.info(f"Checking if index '{index_name}' exists...")
-            index_client.get_index(index_name)
+    # Check if index exists
+    index_exists = False
+    try:
+        logger.info(f"Checking if index '{index_name}' exists...")
+        index_client.get_index(index_name)
+        index_exists = True
+        logger.info(f"Index '{index_name}' already exists")
+    except ResourceNotFoundError:
+        logger.info(f"Index '{index_name}' does not exist")
+
+    # Handle based on delete_if_exists flag
+    if index_exists:
+        if delete_if_exists:
             logger.info(f"Deleting existing index '{index_name}'...")
             index_client.delete_index(index_name)
             logger.info(f"Index '{index_name}' deleted successfully")
-        except Exception as e:
-            if "not found" in str(e).lower():
-                logger.info(f"Index '{index_name}' does not exist, proceeding with creation")
-            else:
-                logger.warning(f"Error checking/deleting index: {e}")
+        else:
+            logger.warning(
+                f"Index '{index_name}' already exists and delete_if_exists=False. "
+                "Skipping index creation to avoid unintended schema changes."
+            )
+            return
 
     logger.info(f"Creating index '{index_name}'...")
 
     # Define the index schema
     fields = [
         SimpleField(
-            name="id",
+            name=FIELD_ID,
             type=SearchFieldDataType.String,
             key=True,
             filterable=True,
             sortable=True
         ),
         SearchableField(
-            name="schema_name",
+            name=FIELD_SCHEMA_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
             facetable=True,
-            analyzer_name="keyword"
+            analyzer_name=ANALYZER_KEYWORD
         ),
         SearchableField(
-            name="table_name",
+            name=FIELD_TABLE_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
             sortable=True,
-            analyzer_name="keyword"
+            analyzer_name=ANALYZER_KEYWORD
         ),
         SearchableField(
-            name="qualified_name",
+            name=FIELD_QUALIFIED_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
-            analyzer_name="keyword"
+            analyzer_name=ANALYZER_KEYWORD
         ),
         SearchableField(
-            name="description",
+            name=FIELD_DESCRIPTION,
             type=SearchFieldDataType.String,
-            analyzer_name="en.microsoft"
+            analyzer_name=ANALYZER_ENGLISH
         ),
         SearchableField(
-            name="column_names",
+            name=FIELD_COLUMN_NAMES,
             type=SearchFieldDataType.String,
             collection=True,
-            analyzer_name="keyword"
+            analyzer_name=ANALYZER_KEYWORD
         ),
         SearchableField(
-            name="column_descriptions",
+            name=FIELD_COLUMN_DESCRIPTIONS,
             type=SearchFieldDataType.String,
-            analyzer_name="en.microsoft"
+            analyzer_name=ANALYZER_ENGLISH
         ),
         SearchableField(
-            name="searchable_content",
+            name=FIELD_SEARCHABLE_CONTENT,
             type=SearchFieldDataType.String,
-            analyzer_name="en.microsoft"
+            analyzer_name=ANALYZER_ENGLISH
         ),
         SimpleField(
-            name="row_count",
+            name=FIELD_ROW_COUNT,
             type=SearchFieldDataType.Int64,
             filterable=True,
             sortable=True
         ),
         SimpleField(
-            name="column_count",
+            name=FIELD_COLUMN_COUNT,
             type=SearchFieldDataType.Int32,
             filterable=True,
             sortable=True
@@ -123,17 +156,17 @@ def create_table_cards_index(
 
     # Configure semantic search for better relevance
     semantic_config = SemanticConfiguration(
-        name="table-cards-semantic-config",
+        name=SEMANTIC_CONFIG_NAME,
         prioritized_fields=SemanticPrioritizedFields(
-            title_field=SemanticField(field_name="qualified_name"),
+            title_field=SemanticField(field_name=FIELD_QUALIFIED_NAME),
             content_fields=[
-                SemanticField(field_name="description"),
-                SemanticField(field_name="searchable_content"),
-                SemanticField(field_name="column_descriptions")
+                SemanticField(field_name=FIELD_DESCRIPTION),
+                SemanticField(field_name=FIELD_SEARCHABLE_CONTENT),
+                SemanticField(field_name=FIELD_COLUMN_DESCRIPTIONS)
             ],
             keywords_fields=[
-                SemanticField(field_name="table_name"),
-                SemanticField(field_name="schema_name")
+                SemanticField(field_name=FIELD_TABLE_NAME),
+                SemanticField(field_name=FIELD_SCHEMA_NAME)
             ]
         )
     )
@@ -166,6 +199,15 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
     """
     metadata = table_card.table_metadata
 
+    # Sanitize ID to only contain allowed characters (letters, digits, _, -, =)
+    # Azure AI Search document keys cannot contain $, ., or other special characters
+    safe_schema = metadata.schema_name
+    safe_table = metadata.name
+    for char in UNSAFE_ID_CHARS:
+        safe_schema = safe_schema.replace(char, SAFE_ID_REPLACEMENT)
+        safe_table = safe_table.replace(char, SAFE_ID_REPLACEMENT)
+    document_id = f"{safe_schema}_{safe_table}_{card_index}"
+
     # Extract column information
     column_names = [col.name for col in table_card.columns]
     column_descriptions = " ".join([
@@ -194,16 +236,16 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
     searchable_content = " ".join(filter(None, searchable_parts))
 
     return {
-        "id": f"{metadata.schema_name}_{metadata.name}_{card_index}",
-        "schema_name": metadata.schema_name,
-        "table_name": metadata.name,
-        "qualified_name": metadata.qualified_name,
-        "description": metadata.description or "",
-        "column_names": column_names,
-        "column_descriptions": column_descriptions,
-        "searchable_content": searchable_content,
-        "row_count": metadata.row_count or 0,
-        "column_count": len(table_card.columns),
+        FIELD_ID: document_id,
+        FIELD_SCHEMA_NAME: metadata.schema_name,
+        FIELD_TABLE_NAME: metadata.name,
+        FIELD_QUALIFIED_NAME: metadata.qualified_name,
+        FIELD_DESCRIPTION: metadata.description or "",
+        FIELD_COLUMN_NAMES: column_names,
+        FIELD_COLUMN_DESCRIPTIONS: column_descriptions,
+        FIELD_SEARCHABLE_CONTENT: searchable_content,
+        FIELD_ROW_COUNT: metadata.row_count or 0,
+        FIELD_COLUMN_COUNT: len(table_card.columns),
     }
 
 
