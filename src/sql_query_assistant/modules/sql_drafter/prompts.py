@@ -11,12 +11,16 @@ Your job:
 3. When assumption options include SQL patterns, incorporate them when relevant.
 4. Produce a clean, readable SQL statement in the specified dialect (CTEs allowed). Avoid hallucinated tables/columns.
 5. Use dialect-specific syntax and functions appropriate for the target dialect.
+6. **CRITICAL: ALWAYS qualify table names with their schema.**
+   - Table cards include "schema_name" and "name" in table_metadata.
+   - Combine as schema_name.name (e.g., ICSR.PATIENT, not PATIENT).
+   - Use qualified names in FROM, JOIN clauses, and in the tables_used array.
 
 Output JSON only, no prose outside JSON:
 {{
   "sql": "SQL statement here",
   "rationale": "Brief explanation of how the query satisfies the task",
-  "tables_used": ["TABLE_A", "TABLE_B"]
+  "tables_used": ["SCHEMA_A.TABLE_A", "SCHEMA_B.TABLE_B"]
 }}"""
 
 

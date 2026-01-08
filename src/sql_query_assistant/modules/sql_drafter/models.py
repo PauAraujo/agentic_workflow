@@ -8,4 +8,7 @@ class RawSQLDraftResponse(BaseModel):
 
     sql: str = Field(..., description="Draft SQL statement")
     rationale: str = Field(..., description="Short reasoning describing how the query meets the task")
-    tables_used: list[str] = Field(..., description="Tables referenced in the draft query")
+    tables_used: list[str] = Field(
+        ...,
+        description="Schema-qualified table names referenced in the draft query (e.g., ['SCHEMA.TABLE'])"
+    )
