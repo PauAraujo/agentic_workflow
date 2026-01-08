@@ -1,8 +1,8 @@
 import pytest
 import sqlite3
 
+from sql_query_assistant.domain import SQLDraft
 from sql_query_assistant.modules.sql_validator.nodes import validate_sql
-from sql_query_assistant.domain import SQLDraft, TableCard, TableMetadata
 
 
 def _make_validator_state(sql, dialect="sqlite"):
@@ -112,3 +112,47 @@ def test_validate_sql_handles_missing_sql_draft(dummy_settings):
     validation = result["validation_result"]
     assert not validation.is_valid
     assert len(validation.syntax_errors) > 0
+
+
+@pytest.mark.parametrize("operation, sql", [
+    ("INSERT", "INSERT INTO ICSR.PATIENT (id, name) VALUES (1, 'test')"),
+    ("UPDATE", "UPDATE ICSR.PATIENT SET name = 'hacked' WHERE id = 1"),
+    ("DELETE", "DELETE FROM ICSR.PATIENT WHERE id = 1"),
+])
+def test_validate_sql_blocks_write_operations(db_with_patient_table, operation, sql):
+    """
+    Validator should reject SQL with write operations (INSERT, UPDATE, DELETE).
+    This test verifies that only SELECT and WITH queries are allowed.
+    """
+    state = _make_validator_state(sql)
+    result = validate_sql(state, db_with_patient_table)
+    validation = result["validation_result"]
+
+    assert not validation.is_valid
+    assert len(validation.syntax_errors) > 0
+
+
+def test_validate_sql_allows_select_operations(db_with_patient_table):
+    """Verify SELECT queries work (control test after blocking write operations)."""
+    state = _make_validator_state("SELECT * FROM ICSR.PATIENT")
+    result = validate_sql(state, db_with_patient_table)
+    validation = result["validation_result"]
+
+    assert validation.is_valid
+
+
+def test_validate_sql_allows_cte_queries(db_with_patient_table):
+    """
+    Validator should allow WITH (Common Table Expression) queries.
+    CTEs are read-only and should be permitted.
+    """
+    state = _make_validator_state(
+        "WITH tmp AS (SELECT id FROM ICSR.PATIENT WHERE id > 5) SELECT * FROM tmp"
+    )
+
+    result = validate_sql(state, db_with_patient_table)
+    validation = result["validation_result"]
+
+    assert validation.is_valid
+    assert validation.sqlglot_parse_passed
+    assert validation.explain_passed

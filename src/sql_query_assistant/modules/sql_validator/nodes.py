@@ -49,8 +49,20 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
 
     # SQLGlot syntax check
     try:
-        parse_one(sql, read=dialect)
+        parsed_ast = parse_one(sql, read=dialect)
         logger.debug("SQLGlot syntax validation passed")
+
+        # Security check: ensure query is read-only (SELECT or CTE)
+        from sqlglot.expressions import Select, With
+        if not isinstance(parsed_ast, (Select, With)):
+            error_msg = (
+                f"Query type not allowed: {type(parsed_ast).__name__}. "
+                "Only SELECT and WITH (CTE) queries are permitted."
+            )
+            result.syntax_errors.append(error_msg)
+            logger.error(error_msg)
+            return {"validation_result": result}
+
     except ParseError as e:
         error_msg = f"SQL syntax error: {str(e)}"
         result.syntax_errors.append(error_msg)
@@ -69,14 +81,17 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         with sqlite3.connect(":memory:") as conn:
             cursor = conn.cursor()
 
+            # Even though EXPLAIN shouldn't modify data, we enforce
+            # read-only mode as a defense-in-depth measure
+            cursor.execute("PRAGMA query_only = ON")
+            logger.debug("Enabled read-only mode for validation")
+
             # Auto-discover and attach all .db files from schemas_dir directory
             attach_all_schema_databases(cursor, settings)
 
             # Use EXPLAIN QUERY PLAN for dry-run validation
             explain_sql = f"EXPLAIN QUERY PLAN {sql}"
-            cursor.execute(explain_sql) # validator checks if the SQL is valid, not if it is safe
-            # TODO: ensure connection is read-only
-            #  or add a string check in the validator ensuring the query starts with SELECT or WITH
+            cursor.execute(explain_sql)
 
             # If we get here, the query is valid (no errors added)
             logger.info("SQL validation passed all checks")
