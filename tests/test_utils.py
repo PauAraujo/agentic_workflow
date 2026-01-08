@@ -56,7 +56,7 @@ def test_load_table_cards_ignores_non_json_files(tmp_path, dummy_settings, sampl
         id="invalid_schema_structure"
     ),
     pytest.param(
-        {"table_metadata": {"name": "TEST"}}, # Missing synonyms, description, etc.
+        {"table_metadata": {}},
         id="missing_required_fields"
     ),
 ])
