@@ -301,6 +301,9 @@ class Settings(EnvBaseSettings):
 
         # Load Azure Search if available
         if self.azure_search is None:
+            # TESTING: Temporarily disable Azure Search to test fallback
+            #self.azure_search = None # uncomment this line,
+            # and comment out the try-except block below
             try:
                 self.azure_search = AzureSearchSettings()
             except ValidationError:
