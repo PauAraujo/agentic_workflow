@@ -27,7 +27,7 @@ FIELD_RERANKER_SCORE = "@search.reranker_score"
 
 # Azure Search configuration
 SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
-DEFAULT_FALLBACK_TOP_K = 5  # Increased from 1 to provide more context
+DEFAULT_FALLBACK_TOP_K = 5
 
 
 def _tokenize(text: str) -> set[str]:
@@ -140,9 +140,149 @@ def _select_fallback_table_cards(
 
 def _get_fallback_limit(settings: Settings) -> int:
     """Get consistent fallback limit across all fallback scenarios."""
-    if settings.azure_search and settings.azure_search.top_k:
-        return settings.azure_search.top_k
+    if settings.azure_search and settings.azure_search.core_count:
+        return settings.azure_search.core_count
     return DEFAULT_FALLBACK_TOP_K
+
+
+def _expand_with_fk_relationships(
+    core_cards: list[TableCard],
+    all_cards: list[TableCard],
+    settings: Settings,
+) -> list[TableCard]:
+    """
+    Expand core table cards by adding their FK relationship neighbors.
+
+    For the top N core tables (based on settings), finds:
+    - Forward FKs: tables that the core table references
+    - Reverse FKs: tables that reference the core table (optional)
+
+    Prioritizes ICSR_LOOKUP schema tables and deduplicates against core cards.
+
+    Args:
+        core_cards: List of core table cards (already selected/ranked)
+        all_cards: All available table cards for FK lookup
+        settings: Application settings with FK expansion configuration
+
+    Returns:
+        List of expanded table cards (core + FK neighbors), capped at max_total
+    """
+    if not settings.azure_search or not settings.azure_search.fk_expansion_enabled:
+        return core_cards
+
+    # Get expansion parameters
+    source_count = settings.azure_search.fk_expansion_source_count
+    max_total = settings.azure_search.fk_expansion_max_total
+    include_reverse = settings.azure_search.fk_expansion_include_reverse
+
+    if source_count == 0:
+        return core_cards[:max_total]
+
+    # Build lookup index: qualified_name -> TableCard
+    all_cards_by_name = {
+        card.table_metadata.qualified_name: card
+        for card in all_cards
+    }
+
+    # Track expanded tables (using qualified names)
+    core_qualified_names = {card.table_metadata.qualified_name for card in core_cards}
+    expanded_qualified_names: set[str] = set()
+
+    # Expand from top N source cards
+    expansion_source_cards = core_cards[:source_count]
+    logger.info(
+        f"Expanding FK relationships from top {len(expansion_source_cards)} core tables: "
+        f"{', '.join(c.table_metadata.qualified_name for c in expansion_source_cards)}"
+    )
+
+    for source_card in expansion_source_cards:
+        # Forward FKs: tables this card references
+        for col in source_card.columns:
+            if col.references:
+                qualified_name = f"{col.references.schema_name}.{col.references.table}"
+
+                # Skip if already in core or already expanded
+                if qualified_name not in core_qualified_names:
+                    expanded_qualified_names.add(qualified_name)
+                    logger.debug(
+                        f"  Forward FK: {source_card.table_metadata.qualified_name}.{col.name} "
+                        f"-> {qualified_name}"
+                    )
+
+        # Reverse FKs: tables that reference this card (optional)
+        if include_reverse:
+            source_qualified_name = source_card.table_metadata.qualified_name
+            for candidate_card in all_cards:
+                # Skip if this is the source card itself or already in core
+                candidate_qualified_name = candidate_card.table_metadata.qualified_name
+                if candidate_qualified_name in core_qualified_names:
+                    continue
+
+                # Check if any column references the source card
+                for col in candidate_card.columns:
+                    if col.references:
+                        ref_qualified_name = f"{col.references.schema_name}.{col.references.table}"
+                        if ref_qualified_name == source_qualified_name:
+                            expanded_qualified_names.add(candidate_qualified_name)
+                            logger.debug(
+                                f"  Reverse FK: {candidate_qualified_name}.{col.name} "
+                                f"-> {source_qualified_name}"
+                            )
+                            break  # Only need one FK reference to include this table
+
+    # Prioritize ICSR_LOOKUP tables (lookup/reference tables are typically small and critical)
+    lookup_tables = [
+        name for name in expanded_qualified_names
+        if name.startswith("ICSR_LOOKUP.")
+    ]
+    other_tables = [
+        name for name in expanded_qualified_names
+        if not name.startswith("ICSR_LOOKUP.")
+    ]
+
+    # Combine: core + lookup tables + other tables, capped at max_total
+    prioritized_names = list(core_qualified_names) + sorted(lookup_tables) + sorted(other_tables)
+    final_qualified_names = prioritized_names[:max_total]
+
+    # Build final list preserving core card order, then expanded cards
+    final_cards = []
+
+    # Add core cards first (preserving their ranking order)
+    for card in core_cards:
+        if card.table_metadata.qualified_name in final_qualified_names:
+            final_cards.append(card)
+
+    # Add expanded cards (sorted for stability)
+    expanded_cards = []
+    for qualified_name in final_qualified_names:
+        if qualified_name not in core_qualified_names:
+            card = all_cards_by_name.get(qualified_name)
+            if card:
+                expanded_cards.append(card)
+            else:
+                logger.warning(
+                    f"FK expansion found reference to {qualified_name} "
+                    f"but no table card exists"
+                )
+
+    # Sort expanded cards: ICSR_LOOKUP first, then alphabetically
+    expanded_cards.sort(
+        key=lambda c: (
+            0 if c.table_metadata.schema_name == "ICSR_LOOKUP" else 1,
+            c.table_metadata.qualified_name
+        )
+    )
+    final_cards.extend(expanded_cards)
+
+    logger.info(
+        f"FK expansion: {len(core_cards)} core -> {len(final_cards)} total "
+        f"(+{len(expanded_cards)} expanded, {len(lookup_tables)} lookup tables)"
+    )
+    logger.debug(
+        f"Final table list: {', '.join(c.table_metadata.qualified_name for c in final_cards)}"
+    )
+
+    return final_cards
 
 
 def _fallback_to_token_based_retrieval(
@@ -154,6 +294,7 @@ def _fallback_to_token_based_retrieval(
     Fallback retrieval using token-based scoring when Azure Search unavailable.
 
     Loads all table cards and scores them based on token overlap with query.
+    Also applies FK expansion if enabled.
 
     Args:
         user_query: User's search query
@@ -161,13 +302,22 @@ def _fallback_to_token_based_retrieval(
         reason: Reason for fallback (for logging)
 
     Returns:
-        List of top-k scored table cards
+        List of top-k scored table cards (with FK expansion if enabled)
     """
     limit = _get_fallback_limit(settings)
     logger.info(f"{reason}; using token-based fallback (limit={limit})")
 
     all_cards = load_table_cards(settings)
-    return _select_fallback_table_cards(all_cards, user_query, limit)
+    core_cards = _select_fallback_table_cards(all_cards, user_query, limit)
+
+    # Apply FK expansion if enabled
+    expanded_cards = _expand_with_fk_relationships(
+        core_cards=core_cards,
+        all_cards=all_cards,
+        settings=settings
+    )
+
+    return expanded_cards
 
 
 def retrieve_relevant_table_cards(
@@ -271,12 +421,23 @@ def retrieve_relevant_table_cards(
                     f"but not in loaded table cards"
                 )
 
+        # Select core cards (top N based on reranker score)
+        core_count = settings.azure_search.core_count
+        core_cards = relevant_table_cards[:core_count]
+
         logger.info(
-            f"Selected {len(relevant_table_cards)} relevant table cards: "
-            f"{', '.join(card.table_metadata.qualified_name for card in relevant_table_cards)}"
+            f"Selected {len(core_cards)} core table cards: "
+            f"{', '.join(card.table_metadata.qualified_name for card in core_cards)}"
         )
 
-        return {STATE_KEY_TABLE_CARDS: relevant_table_cards}
+        # Expand with FK relationships
+        expanded_cards = _expand_with_fk_relationships(
+            core_cards=core_cards,
+            all_cards=all_table_cards,
+            settings=settings
+        )
+
+        return {STATE_KEY_TABLE_CARDS: expanded_cards}
 
     except Exception as e:
         logger.error(f"Error retrieving table cards from Azure Search: {e}", exc_info=True)

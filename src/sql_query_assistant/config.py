@@ -167,10 +167,41 @@ class AzureSearchSettings(EnvBaseSettings):
     )
     top_k: int = Field(
         validation_alias="AZURE_SEARCH_TOP_K",
-        default=5,
-        description="Number of top relevant table cards to retrieve",
+        default=50,
+        description="Number of top relevant table cards to retrieve from initial search",
+        ge=1,
+        le=100
+    )
+    core_count: int = Field(
+        validation_alias="TABLE_CARD_CORE_COUNT",
+        default=10,
+        description="Number of core table cards to select after reranking",
         ge=1,
         le=50
+    )
+    fk_expansion_enabled: bool = Field(
+        validation_alias="FK_EXPANSION_ENABLED",
+        default=True,
+        description="Enable FK relationship expansion for top tables"
+    )
+    fk_expansion_source_count: int = Field(
+        validation_alias="FK_EXPANSION_SOURCE_COUNT",
+        default=3,
+        description="Number of top core tables to use as source for FK expansion",
+        ge=0,
+        le=10
+    )
+    fk_expansion_max_total: int = Field(
+        validation_alias="FK_EXPANSION_MAX_TOTAL",
+        default=25,
+        description="Maximum total table cards after FK expansion",
+        ge=1,
+        le=50
+    )
+    fk_expansion_include_reverse: bool = Field(
+        validation_alias="FK_EXPANSION_INCLUDE_REVERSE",
+        default=False,
+        description="Include reverse FK relationships (tables that reference the core tables)"
     )
 
 
