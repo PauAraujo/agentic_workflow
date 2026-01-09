@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 ANALYZER_ENGLISH = "en.microsoft"
 ANALYZER_KEYWORD = "keyword"
 
+# Noise suffixes that add no semantic value (high frequency, low meaning)
+SUFFIX_NOISE_TOKENS = {'id', 'code', 'key', 'num', 'pk', 'fk', 'flag', 'ind'}
+
 # Semantic configuration name
 SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
 
@@ -42,6 +45,7 @@ FIELD_COLUMN_DESCRIPTIONS = "column_descriptions"
 FIELD_SEARCHABLE_CONTENT = "searchable_content"
 FIELD_ROW_COUNT = "row_count"
 FIELD_COLUMN_COUNT = "column_count"
+FIELD_NORMALIZED_COLUMN_NAMES = "normalized_column_names"
 
 # ID sanitization
 UNSAFE_ID_CHARS = ['$', '.', '/', '\\', '#', '?']
@@ -92,14 +96,14 @@ def create_table_cards_index(
 
     # Define the index schema
     fields = [
-        SimpleField(
+        SimpleField(  # not searchable, only used for filtering, sorting or facets
             name=FIELD_ID,
             type=SearchFieldDataType.String,
             key=True,
             filterable=True,
             sortable=True
         ),
-        SearchableField(
+        SearchableField(  # lexical field (exact match)
             name=FIELD_SCHEMA_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
@@ -119,16 +123,21 @@ def create_table_cards_index(
             filterable=True,
             analyzer_name=ANALYZER_KEYWORD
         ),
-        SearchableField(
+        SearchableField( # lexical field ("BM25" search layer)
             name=FIELD_DESCRIPTION,
             type=SearchFieldDataType.String,
-            analyzer_name=ANALYZER_ENGLISH
+            analyzer_name=ANALYZER_ENGLISH # tokenizes, stems, removes stop words, case-insensitive
         ),
         SearchableField(
             name=FIELD_COLUMN_NAMES,
             type=SearchFieldDataType.String,
             collection=True,
             analyzer_name=ANALYZER_KEYWORD
+        ),
+        SearchableField(
+            name=FIELD_NORMALIZED_COLUMN_NAMES,
+            type=SearchFieldDataType.String,
+            analyzer_name=ANALYZER_ENGLISH
         ),
         SearchableField(
             name=FIELD_COLUMN_DESCRIPTIONS,
@@ -154,17 +163,20 @@ def create_table_cards_index(
         ),
     ]
 
-    # Configure semantic search for better relevance
+    # Semantic re-ranking configuration
+    # 1. System performs standard Text Search (BM25) to get top 50 results.
+    # 2. System feeds the text from 'prioritized_fields' into a Microsoft Deep Learning model.
+    # 3. Model re-orders results based on reading comprehension, not just keyword frequency.
     semantic_config = SemanticConfiguration(
         name=SEMANTIC_CONFIG_NAME,
-        prioritized_fields=SemanticPrioritizedFields(
+        prioritized_fields=SemanticPrioritizedFields( # high importance
             title_field=SemanticField(field_name=FIELD_QUALIFIED_NAME),
-            content_fields=[
-                SemanticField(field_name=FIELD_DESCRIPTION),
+            content_fields=[ # medium importance
                 SemanticField(field_name=FIELD_SEARCHABLE_CONTENT),
+                SemanticField(field_name=FIELD_NORMALIZED_COLUMN_NAMES),
                 SemanticField(field_name=FIELD_COLUMN_DESCRIPTIONS)
             ],
-            keywords_fields=[
+            keywords_fields=[ # low importance
                 SemanticField(field_name=FIELD_TABLE_NAME),
                 SemanticField(field_name=FIELD_SCHEMA_NAME)
             ]
@@ -185,6 +197,35 @@ def create_table_cards_index(
     index_client.create_or_update_index(index)
     logger.info(f"Index '{index_name}' created successfully")
 
+
+def normalize_column_name(column_name: str) -> str:
+    """
+    Normalize a column name for searchability.
+
+    Splits on underscores and removes noise suffixes only (e.g., _ID, _CODE).
+    Preserves semantic tokens like DATE, TIME, NAME, TYPE, STATUS.
+
+    Examples:
+        PATIENT_SEX_ID -> "patient sex"
+        BIRTH_DATE -> "birth date"
+        SUBSTANCE_NAME -> "substance name"
+        RMS_CODE -> "rms"
+        START_DATE -> "start date"
+
+    Args:
+        column_name: Raw column name (e.g., "PATIENT_SEX_ID")
+
+    Returns:
+        Normalized column name (e.g., "patient sex")
+    """
+    # Split on underscores and convert to lowercase
+    tokens = column_name.lower().split('_')
+
+    # Strip only if last token is noise AND there are multiple tokens
+    if len(tokens) > 1 and tokens[-1] in SUFFIX_NOISE_TOKENS:
+        tokens = tokens[:-1]
+
+    return ' '.join(tokens)
 
 def prepare_table_card_document(table_card, card_index: int) -> dict:
     """
@@ -216,19 +257,34 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
         if col.description
     ])
 
+    # Normalize column names for better searchability
+    normalized_column_names = [
+        normalize_column_name(col_name)
+        for col_name in column_names
+    ]
+    # Filter out empty normalized names
+    normalized_column_names_text = " ".join(filter(None, normalized_column_names))
+
     # Build comprehensive searchable content combining all text fields
     searchable_parts = [
         metadata.name,
         metadata.description,
     ]
 
-    # Add foreign key information for context
-    if metadata.foreign_keys:
-        fk_text = " ".join([
-            f"Foreign key to {fk.references.schema_name}.{fk.references.table}"
-            for fk in metadata.foreign_keys
-        ])
-        searchable_parts.append(fk_text)
+    # Add normalized column names
+    if normalized_column_names_text:
+        searchable_parts.append(normalized_column_names_text)
+
+    # Add foreign key information from column-level references
+    column_fk_parts = []
+    for col in table_card.columns:
+        if col.references:
+            ref = col.references
+            column_fk_parts.append(
+                f"{col.name} references {ref.schema_name}.{ref.table}.{ref.column}"
+            )
+    if column_fk_parts:
+        searchable_parts.append(" ".join(column_fk_parts))
 
     # Add column info
     searchable_parts.append(column_descriptions)
@@ -242,6 +298,7 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
         FIELD_QUALIFIED_NAME: metadata.qualified_name,
         FIELD_DESCRIPTION: metadata.description or "",
         FIELD_COLUMN_NAMES: column_names,
+        FIELD_NORMALIZED_COLUMN_NAMES: normalized_column_names_text,
         FIELD_COLUMN_DESCRIPTIONS: column_descriptions,
         FIELD_SEARCHABLE_CONTENT: searchable_content,
         FIELD_ROW_COUNT: metadata.row_count or 0,
