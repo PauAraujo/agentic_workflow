@@ -11,7 +11,7 @@ from sql_query_assistant.config import Settings
 # Lookup column candidates for identifying key-value pairs in lookup tables
 KEY_COLUMN_CANDIDATES = ["ID", "CODE"]
 VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
-KEY_COLUMN_SUFFIXES = ["_CODE", "_ID"]  # Prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
+KEY_COLUMN_SUFFIXES = ["_CODE", "_ID"]  # prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
 VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
 
 # Metadata field names
@@ -217,10 +217,18 @@ def pick_lookup_columns(columns: list[dict[str, Any]], table_name: Optional[str]
     key_column = find_candidate(KEY_COLUMN_CANDIDATES, KEY_COLUMN_SUFFIXES)
     value_column = find_candidate(VALUE_COLUMN_CANDIDATES, VALUE_COLUMN_SUFFIXES)
 
-    # For two-column tables without matches, use first column as key, second as value
-    if len(column_names) == 2 and not key_column:
-        key_column = column_names[0]
-        value_column = column_names[1]
+    # For two-column tables, use smart fallback based on what was found
+    if len(column_names) == 2:
+        if not key_column and not value_column:
+            # Neither found: use positional (first=key, second=value)
+            key_column = column_names[0]
+            value_column = column_names[1]
+        elif key_column and not value_column:
+            # Found key: use the other column as value
+            value_column = column_names[1] if column_names[0] == key_column else column_names[0]
+        elif value_column and not key_column:
+            # Found value: use the other column as key (don't overwrite value_column!)
+            key_column = column_names[0] if column_names[1] == value_column else column_names[1]
 
     if key_column and value_column and key_column != value_column:
         return key_column, value_column
@@ -242,7 +250,7 @@ def load_value_map(csv_path: Path, key_column: str, value_column: str, threshold
     """
     value_map = {}
     with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-        reader = csv.dictReader(handle)
+        reader = csv.DictReader(handle)
         for index, row in enumerate(reader, start=1):
             if index > threshold:
                 return None
@@ -270,7 +278,7 @@ def load_sample_values(csv_path: Path, key_column: str, value_column: str, sampl
     """
     samples = []
     with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-        reader = csv.dictReader(handle)
+        reader = csv.DictReader(handle)
         for row in reader:
             key_value = row.get(key_column)
             value = row.get(value_column)
