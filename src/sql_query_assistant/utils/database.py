@@ -1,9 +1,34 @@
+import re
 import logging
 import sqlite3
 
 from sql_query_assistant.config import Settings
 
 logger = logging.getLogger(__name__)
+
+# Valid schema name pattern: starts with letter, contains only alphanumeric and underscores
+VALID_SCHEMA_NAME_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
+
+
+def _validate_schema_name(schema_name: str) -> None:
+    """
+    Validate that a schema name is safe to use in SQL statements.
+
+    Schema names must start with a letter and contain only alphanumeric
+    characters and underscores. This prevents SQL injection via malicious
+    filenames.
+
+    Args:
+        schema_name: The schema name to validate
+
+    Raises:
+        ValueError: If schema name contains invalid characters
+    """
+    if not VALID_SCHEMA_NAME_PATTERN.match(schema_name):
+        raise ValueError(
+            f"Invalid schema name '{schema_name}'. Schema names must start with a letter "
+            f"and contain only alphanumeric characters and underscores."
+        )
 
 
 def attach_all_schema_databases(cursor: sqlite3.Cursor, settings: Settings) -> None:
@@ -37,7 +62,21 @@ def attach_all_schema_databases(cursor: sqlite3.Cursor, settings: Settings) -> N
 
     for db_file in db_files:
         schema_name = db_file.stem  # "ICSR.db" → "ICSR"
-        cursor.execute("ATTACH DATABASE ? AS ?", (str(db_file), schema_name))
+
+        # Validate schema name to prevent SQL injection
+        # SQLite doesn't support parameterized identifiers, so we must validate
+        # before inserting into the SQL statement
+        try:
+            _validate_schema_name(schema_name)
+        except ValueError as e:
+            logger.error("Skipping database file %s: %s", db_file.name, e)
+            continue
+
+        # Schema name cannot be parameterized (it's an identifier, not a value)
+        # We validate it above and then safely insert it into the SQL string
+        # File path CAN be parameterized as it's a string value
+        attach_sql = f"ATTACH DATABASE ? AS {schema_name}"
+        cursor.execute(attach_sql, (str(db_file),))
         logger.debug("Attached schema '%s' from %s", schema_name, db_file.name)
 
     logger.info("Attached %d schemas from %s", len(db_files), db_dir)
