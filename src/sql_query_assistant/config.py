@@ -203,6 +203,22 @@ class AzureSearchSettings(EnvBaseSettings):
         default=False,
         description="Include reverse FK relationships (tables that reference the core tables)"
     )
+    # Embedding configuration for hybrid search
+    embedding_deployment: str = Field(
+        validation_alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT",
+        default="text-embedding-3-small",
+        description="Azure OpenAI deployment name for embeddings"
+    )
+    embedding_dimensions: int = Field(
+        validation_alias="AZURE_OPENAI_EMBEDDING_DIMENSIONS",
+        default=1536,
+        description="Embedding vector dimensions (1536 for text-embedding-3-small/ada-002)"
+    )
+    hybrid_search_enabled: bool = Field(
+        validation_alias="HYBRID_SEARCH_ENABLED",
+        default=True,
+        description="Enable hybrid search (BM25 + vector). Falls back to lexical if False"
+    )
 
 
 class AwsSettings(EnvBaseSettings):

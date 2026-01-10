@@ -5,15 +5,21 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
-    SearchIndex,
-    SimpleField,
-    SearchableField,
+    HnswAlgorithmConfiguration,
+    HnswParameters,
+    SearchField,
     SearchFieldDataType,
+    SearchIndex,
+    SearchableField,
     SemanticConfiguration,
     SemanticField,
     SemanticPrioritizedFields,
     SemanticSearch,
+    SimpleField,
+    VectorSearch,
+    VectorSearchProfile,
 )
+from openai import AzureOpenAI
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.utils.loaders import load_table_cards
@@ -46,6 +52,11 @@ FIELD_SEARCHABLE_CONTENT = "searchable_content"
 FIELD_ROW_COUNT = "row_count"
 FIELD_COLUMN_COUNT = "column_count"
 FIELD_NORMALIZED_COLUMN_NAMES = "normalized_column_names"
+FIELD_CONTENT_VECTOR = "content_vector"
+
+# Vector search configuration
+VECTOR_ALGORITHM_NAME = "hnsw-algorithm"
+VECTOR_PROFILE_NAME = "vector-profile"
 
 # ID sanitization
 UNSAFE_ID_CHARS = ['$', '.', '/', '\\', '#', '?']
@@ -56,6 +67,7 @@ def create_table_cards_index(
     endpoint: str,
     admin_key: str,
     index_name: str,
+    embedding_dimensions: int = 1536,
     delete_if_exists: bool = True
 ) -> None:
     """
@@ -65,6 +77,7 @@ def create_table_cards_index(
         endpoint: Azure AI Search endpoint URL
         admin_key: Admin key for creating/updating indexes
         index_name: Name of the index to create
+        embedding_dimensions: Dimension of embedding vectors (1536 for text-embedding-3-small)
         delete_if_exists: Whether to delete existing index before creating
     """
     index_client = SearchIndexClient(endpoint, AzureKeyCredential(admin_key))
@@ -161,7 +174,37 @@ def create_table_cards_index(
             filterable=True,
             sortable=True
         ),
+        # Vector field for semantic similarity search
+        SearchField(
+            name=FIELD_CONTENT_VECTOR,
+            type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+            searchable=True,
+            vector_search_dimensions=embedding_dimensions,
+            vector_search_profile_name=VECTOR_PROFILE_NAME
+        ),
     ]
+
+    # Vector search configuration using HNSW algorithm
+    # HNSW provides excellent recall with efficient search (better than exhaustive KNN for our scale)
+    vector_search = VectorSearch(
+        algorithms=[
+            HnswAlgorithmConfiguration(
+                name=VECTOR_ALGORITHM_NAME,
+                parameters=HnswParameters(
+                    m=4,  # Number of bi-directional links (4 is good for <1000 docs)
+                    ef_construction=400,  # Higher = better recall during indexing
+                    ef_search=500,  # Higher = better recall during search
+                    metric="cosine"  # Cosine similarity for normalized embeddings
+                )
+            )
+        ],
+        profiles=[
+            VectorSearchProfile(
+                name=VECTOR_PROFILE_NAME,
+                algorithm_configuration_name=VECTOR_ALGORITHM_NAME
+            )
+        ]
+    )
 
     # Semantic re-ranking configuration
     # 1. System performs standard Text Search (BM25) to get top 50 results.
@@ -187,15 +230,68 @@ def create_table_cards_index(
         configurations=[semantic_config]
     )
 
-    # Create the index
+    # Create the index with vector search and semantic reranking
     index = SearchIndex(
         name=index_name,
         fields=fields,
+        vector_search=vector_search,
         semantic_search=semantic_search
     )
 
     index_client.create_or_update_index(index)
     logger.info(f"Index '{index_name}' created successfully")
+
+
+def create_embedding_client(settings: Settings) -> AzureOpenAI:
+    """
+    Create an Azure OpenAI client for generating embeddings.
+
+    Args:
+        settings: Application settings with Azure OpenAI configuration
+
+    Returns:
+        Configured AzureOpenAI client
+    """
+    return AzureOpenAI(
+        api_key=settings.azure.api_key,
+        api_version=settings.azure.api_version,
+        azure_endpoint=str(settings.azure.openai_endpoint)
+    )
+
+
+def generate_embeddings(
+    client: AzureOpenAI,
+    texts: list[str],
+    deployment: str,
+    batch_size: int = 16
+) -> list[list[float]]:
+    """
+    Generate embeddings for a list of texts using Azure OpenAI.
+
+    Args:
+        client: Azure OpenAI client
+        texts: List of texts to embed
+        deployment: Azure OpenAI deployment name for embeddings
+        batch_size: Number of texts to embed per API call
+
+    Returns:
+        List of embedding vectors
+    """
+    all_embeddings = []
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        logger.debug(f"Generating embeddings for batch {i // batch_size + 1}")
+
+        response = client.embeddings.create(
+            input=batch,
+            model=deployment
+        )
+
+        batch_embeddings = [item.embedding for item in response.data]
+        all_embeddings.extend(batch_embeddings)
+
+    return all_embeddings
 
 
 def normalize_column_name(column_name: str) -> str:
@@ -315,6 +411,9 @@ def index_table_cards(
     """
     Load and index all table cards from the configured directory.
 
+    Generates embeddings for each table card's searchable content and uploads
+    documents with both text fields and vector embeddings.
+
     Args:
         endpoint: Azure AI Search endpoint URL
         admin_key: Admin key for indexing operations
@@ -335,6 +434,25 @@ def index_table_cards(
         prepare_table_card_document(card, idx)
         for idx, card in enumerate(table_cards)
     ]
+
+    # Generate embeddings for searchable content
+    embedding_deployment = settings.azure_search.embedding_deployment
+    logger.info(f"Generating embeddings using deployment '{embedding_deployment}'...")
+
+    embedding_client = create_embedding_client(settings)
+    searchable_contents = [doc[FIELD_SEARCHABLE_CONTENT] for doc in documents]
+
+    embeddings = generate_embeddings(
+        client=embedding_client,
+        texts=searchable_contents,
+        deployment=embedding_deployment
+    )
+
+    # Add embeddings to documents
+    for doc, embedding in zip(documents, embeddings):
+        doc[FIELD_CONTENT_VECTOR] = embedding
+
+    logger.info(f"Generated {len(embeddings)} embeddings")
 
     # Upload to Azure AI Search
     logger.info(f"Uploading documents to index '{index_name}'...")
@@ -377,13 +495,21 @@ def main():
     admin_key = settings.azure_search.admin_key
     index_name = settings.azure_search.table_cards_index_name
 
+    embedding_dimensions = settings.azure_search.embedding_dimensions
+
     logger.info(f"Azure AI Search Endpoint: {endpoint}")
     logger.info(f"Index Name: {index_name}")
+    logger.info(f"Embedding Dimensions: {embedding_dimensions}")
 
-    # Create the index
-    create_table_cards_index(endpoint, admin_key, index_name)
+    # Create the index with vector search support
+    create_table_cards_index(
+        endpoint,
+        admin_key,
+        index_name,
+        embedding_dimensions=embedding_dimensions
+    )
 
-    # Index the table cards
+    # Index the table cards with embeddings
     index_table_cards(endpoint, admin_key, index_name, settings)
 
     logger.info("\n" + "="*60)

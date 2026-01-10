@@ -3,7 +3,13 @@ import logging
 
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
-from azure.search.documents.models import QueryType, QueryCaptionType, QueryAnswerType
+from azure.search.documents.models import (
+    QueryType,
+    QueryCaptionType,
+    QueryAnswerType,
+    VectorizedQuery,
+)
+from openai import AzureOpenAI
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.state import WorkflowState
@@ -22,12 +28,50 @@ FIELD_ID = "id"
 FIELD_SCHEMA_NAME = "schema_name"
 FIELD_TABLE_NAME = "table_name"
 FIELD_QUALIFIED_NAME = "qualified_name"
+FIELD_CONTENT_VECTOR = "content_vector"
 FIELD_SEARCH_SCORE = "@search.score"
 FIELD_RERANKER_SCORE = "@search.reranker_score"
 
 # Azure Search configuration
 SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
 DEFAULT_FALLBACK_TOP_K = 5
+
+# Embedding client cache (module-level singleton)
+_embedding_client: AzureOpenAI | None = None
+
+
+def _get_embedding_client(settings: Settings) -> AzureOpenAI:
+    """Get or create a cached Azure OpenAI client for embeddings."""
+    global _embedding_client
+    if _embedding_client is None:
+        _embedding_client = AzureOpenAI(
+            api_key=settings.azure.api_key,
+            api_version=settings.azure.api_version,
+            azure_endpoint=str(settings.azure.openai_endpoint)
+        )
+    return _embedding_client
+
+
+def _generate_query_embedding(query: str, settings: Settings) -> list[float]:
+    """
+    Generate embedding vector for a search query.
+
+    Args:
+        query: User search query
+        settings: Application settings with Azure OpenAI configuration
+
+    Returns:
+        Embedding vector as list of floats
+    """
+    client = _get_embedding_client(settings)
+    deployment = settings.azure_search.embedding_deployment
+
+    response = client.embeddings.create(
+        input=[query],
+        model=deployment
+    )
+
+    return response.data[0].embedding
 
 
 def _tokenize(text: str) -> set[str]:
@@ -361,16 +405,33 @@ def retrieve_relevant_table_cards(
     )
 
     try:
-        # Perform semantic search with reranking
-        results = search_client.search(
-            search_text=user_query,
-            query_type=QueryType.SEMANTIC,
-            semantic_configuration_name=SEMANTIC_CONFIG_NAME,
-            query_caption=QueryCaptionType.EXTRACTIVE,
-            query_answer=QueryAnswerType.EXTRACTIVE,
-            top=settings.azure_search.top_k,
-            select=[FIELD_ID, FIELD_SCHEMA_NAME, FIELD_TABLE_NAME, FIELD_QUALIFIED_NAME],
-        )
+        # Build search parameters
+        search_params = {
+            "search_text": user_query,
+            "query_type": QueryType.SEMANTIC,
+            "semantic_configuration_name": SEMANTIC_CONFIG_NAME,
+            "query_caption": QueryCaptionType.EXTRACTIVE,
+            "query_answer": QueryAnswerType.EXTRACTIVE,
+            "top": settings.azure_search.top_k,
+            "select": [FIELD_ID, FIELD_SCHEMA_NAME, FIELD_TABLE_NAME, FIELD_QUALIFIED_NAME],
+        }
+
+        # Add vector query for hybrid search if enabled
+        if settings.azure_search.hybrid_search_enabled:
+            logger.info("Using hybrid search (BM25 + vector + semantic reranker)")
+            query_embedding = _generate_query_embedding(user_query, settings)
+
+            vector_query = VectorizedQuery(
+                vector=query_embedding,
+                k_nearest_neighbors=settings.azure_search.top_k,
+                fields=FIELD_CONTENT_VECTOR
+            )
+            search_params["vector_queries"] = [vector_query]
+        else:
+            logger.info("Using lexical search with semantic reranker (hybrid disabled)")
+
+        # Perform hybrid search: BM25 + vector (RRF fusion) + semantic reranker
+        results = search_client.search(**search_params)
 
         # Extract search results
         search_results: list[TableCardSearchResult] = []
