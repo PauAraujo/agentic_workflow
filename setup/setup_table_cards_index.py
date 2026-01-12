@@ -116,25 +116,25 @@ def create_table_cards_index(
             filterable=True,
             sortable=True
         ),
-        SearchableField(  # lexical field (exact match)
+        SearchableField(
             name=FIELD_SCHEMA_NAME,
             type=SearchFieldDataType.String,
-            filterable=True,
+            filterable=True,  # OData filtering works on raw stored value, not analyzed tokens
             facetable=True,
-            analyzer_name=ANALYZER_KEYWORD
+            analyzer_name=ANALYZER_ENGLISH  # "ICSR_LOOKUP" → ["icsr", "lookup"] for queries like "lookup tables"
         ),
         SearchableField(
             name=FIELD_TABLE_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
-            sortable=True,
-            analyzer_name=ANALYZER_KEYWORD
+            sortable=True,  # sorting works on raw stored value, not analyzed tokens
+            analyzer_name=ANALYZER_ENGLISH  # "DRUG_REACTION" → ["drug", "reaction"] for natural language queries
         ),
         SearchableField(
             name=FIELD_QUALIFIED_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
-            analyzer_name=ANALYZER_KEYWORD
+            analyzer_name=ANALYZER_ENGLISH  # "ICSR.DRUG_REACTION" → ["icsr", "drug", "reaction"]
         ),
         SearchableField( # lexical field ("BM25" search layer)
             name=FIELD_DESCRIPTION,
@@ -145,6 +145,10 @@ def create_table_cards_index(
             name=FIELD_COLUMN_NAMES,
             type=SearchFieldDataType.String,
             collection=True,
+            # KEPT AS KEYWORD: normalized_column_names (with ENGLISH) is strictly better because
+            # it removes noise suffixes. Example: "PATIENT_SEX_ID" becomes "patient sex" in
+            # normalized_column_names, vs ["patient", "sex", "id"] if we used ENGLISH here.
+            # This field exists for exact column name lookups if ever needed.
             analyzer_name=ANALYZER_KEYWORD
         ),
         SearchableField(
