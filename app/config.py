@@ -14,7 +14,6 @@ EXECUTOR_GRAPH_PATH = OUTPUT_DIR / "graphs" / "executor_subgraph.png"
 
 # UI Constants
 PRIMARY_BLUE = "#0b2d59"
-MAX_STEP = 4
 
 # Page configuration
 PAGE_TITLE = "SQL Query Assistant"

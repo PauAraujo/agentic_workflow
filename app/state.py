@@ -10,10 +10,8 @@ def initialize_session_state() -> None:
     """
     Initialize all session state keys with default values.
 
-    Sets up wizard_step (default 0) and last_state (default None) if not present.
+    Sets up last_state (default None) if not present.
     """
-    if "wizard_step" not in st.session_state:
-        st.session_state["wizard_step"] = 0
     if "last_state" not in st.session_state:
         st.session_state["last_state"] = None
 
@@ -65,16 +63,6 @@ def set_last_workflow_state(state: dict[str, Any]) -> None:
         state: Workflow state dictionary containing execution results
     """
     st.session_state["last_state"] = state
-
-
-def has_workflow_results() -> bool:
-    """
-    Check if workflow results are available in session state.
-
-    Returns:
-        bool: True if workflow has been executed and results are available, False otherwise
-    """
-    return st.session_state.get("last_state") is not None
 
 
 def get_table_cards() -> list:
