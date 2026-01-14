@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # State keys
 STATE_KEY_USER_QUERY = "user_query"
 STATE_KEY_TABLE_CARDS = "table_cards"
+STATE_KEY_ALLOWED_SCHEMAS = "allowed_schemas"
 
 # Azure Search field names
 FIELD_ID = "id"
@@ -242,15 +243,13 @@ def _expand_with_fk_relationships(
     for source_card in expansion_source_cards:
         # Forward FKs: tables this card references
         for col in source_card.columns:
-            if col.references:
-                qualified_name = f"{col.references.schema_name}.{col.references.table}"
-
+            if col.fk_qualified_table:
                 # Skip if already in core or already expanded
-                if qualified_name not in core_qualified_names:
-                    expanded_qualified_names.add(qualified_name)
+                if col.fk_qualified_table not in core_qualified_names:
+                    expanded_qualified_names.add(col.fk_qualified_table)
                     logger.debug(
                         f"  Forward FK: {source_card.table_metadata.qualified_name}.{col.name} "
-                        f"-> {qualified_name}"
+                        f"-> {col.fk_qualified_table}"
                     )
 
         # Reverse FKs: tables that reference this card (optional)
@@ -264,15 +263,13 @@ def _expand_with_fk_relationships(
 
                 # Check if any column references the source card
                 for col in candidate_card.columns:
-                    if col.references:
-                        ref_qualified_name = f"{col.references.schema_name}.{col.references.table}"
-                        if ref_qualified_name == source_qualified_name:
-                            expanded_qualified_names.add(candidate_qualified_name)
-                            logger.debug(
-                                f"  Reverse FK: {candidate_qualified_name}.{col.name} "
-                                f"-> {source_qualified_name}"
-                            )
-                            break  # Only need one FK reference to include this table
+                    if col.fk_qualified_table == source_qualified_name:
+                        expanded_qualified_names.add(candidate_qualified_name)
+                        logger.debug(
+                            f"  Reverse FK: {candidate_qualified_name}.{col.name} "
+                            f"-> {source_qualified_name}"
+                        )
+                        break  # Only need one FK reference to include this table
 
     # Prioritize ICSR_LOOKUP tables (lookup/reference tables are typically small and critical)
     lookup_tables = [
@@ -332,17 +329,20 @@ def _expand_with_fk_relationships(
 def _fallback_to_token_based_retrieval(
     user_query: str,
     settings: Settings,
+    allowed_schemas: list[str] | None = None,
     reason: str = "Azure Search unavailable",
 ) -> list[TableCard]:
     """
     Fallback retrieval using token-based scoring when Azure Search unavailable.
 
-    Loads all table cards and scores them based on token overlap with query.
-    Also applies FK expansion if enabled.
+    Loads table cards (optionally filtered by schema) and scores them based on
+    token overlap with query. Also applies FK expansion if enabled.
 
     Args:
         user_query: User's search query
         settings: Application settings
+        allowed_schemas: Optional list of schema names to load.
+                        If None, loads from all schemas.
         reason: Reason for fallback (for logging)
 
     Returns:
@@ -351,7 +351,7 @@ def _fallback_to_token_based_retrieval(
     limit = _get_fallback_limit(settings)
     logger.info(f"{reason}; using token-based fallback (limit={limit})")
 
-    all_cards = load_table_cards(settings)
+    all_cards = load_table_cards(settings, schemas=allowed_schemas)
     core_cards = _select_fallback_table_cards(all_cards, user_query, limit)
 
     # Apply FK expansion if enabled
@@ -374,13 +374,14 @@ def retrieve_relevant_table_cards(
     If Azure Search is not configured, falls back to loading all table cards.
 
     Args:
-        state: Current workflow state containing user_query
+        state: Current workflow state containing user_query and allowed_schemas
         settings: Application settings with Azure Search configuration
 
     Returns:
         Partial state update with filtered table_cards list
     """
     user_query = state.get(STATE_KEY_USER_QUERY, "")
+    allowed_schemas = state.get(STATE_KEY_ALLOWED_SCHEMAS)
 
     if not user_query:
         logger.warning("No user query provided; cannot retrieve table cards")
@@ -391,6 +392,7 @@ def retrieve_relevant_table_cards(
         fallback_cards = _fallback_to_token_based_retrieval(
             user_query,
             settings,
+            allowed_schemas=allowed_schemas,
             reason="Azure AI Search not configured"
         )
         return {STATE_KEY_TABLE_CARDS: fallback_cards}
@@ -404,17 +406,29 @@ def retrieve_relevant_table_cards(
         credential=AzureKeyCredential(settings.azure_search.query_key)
     )
 
+    # Build OData filter for schema filtering
+    schema_filter = None
+    if allowed_schemas:
+        # Azure Search OData syntax: schema_name eq 'ICSR' or schema_name eq 'ICSR_LOOKUP'
+        filter_parts = [f"schema_name eq '{schema}'" for schema in allowed_schemas]
+        schema_filter = " or ".join(filter_parts)
+        logger.info(f"Applying schema filter: {schema_filter}")
+
     try:
         # Build search parameters
         search_params = {
             "search_text": user_query,
-            "query_type": QueryType.SEMANTIC,
-            "semantic_configuration_name": SEMANTIC_CONFIG_NAME,
-            "query_caption": QueryCaptionType.EXTRACTIVE,
-            "query_answer": QueryAnswerType.EXTRACTIVE,
+            "query_type": QueryType.SEMANTIC, # portal default: QueryType.SIMPLE (BM25) --> to experiment with
+            "semantic_configuration_name": SEMANTIC_CONFIG_NAME, # specific to semantic search (remove if not using semantic)
+            "query_caption": QueryCaptionType.EXTRACTIVE, # specific to semantic search (remove if not using semantic)
+            "query_answer": QueryAnswerType.EXTRACTIVE, # specific to semantic search (remove if not using semantic)
             "top": settings.azure_search.top_k,
             "select": [FIELD_ID, FIELD_SCHEMA_NAME, FIELD_TABLE_NAME, FIELD_QUALIFIED_NAME],
         }
+
+        # Add schema filter if schemas are restricted
+        if schema_filter:
+            search_params["filter"] = schema_filter
 
         # Add vector query for hybrid search if enabled
         if settings.azure_search.hybrid_search_enabled:
@@ -455,14 +469,15 @@ def retrieve_relevant_table_cards(
             fallback_cards = _fallback_to_token_based_retrieval(
                 user_query,
                 settings,
+                allowed_schemas=allowed_schemas,
                 reason="No relevant table cards found in Azure Search"
             )
             return {STATE_KEY_TABLE_CARDS: fallback_cards}
 
         logger.info(f"Retrieved {len(search_results)} relevant table cards from Azure Search")
 
-        # Load the full table cards for the matching tables
-        all_table_cards = load_table_cards(settings)
+        # Load the full table cards for the matching tables (filtered by schemas if specified)
+        all_table_cards = load_table_cards(settings, schemas=allowed_schemas)
 
         # Create a mapping from qualified name to table card
         table_cards_by_qualified_name = {
@@ -505,6 +520,7 @@ def retrieve_relevant_table_cards(
         fallback_cards = _fallback_to_token_based_retrieval(
             user_query,
             settings,
+            allowed_schemas=allowed_schemas,
             reason="Azure Search error"
         )
         return {STATE_KEY_TABLE_CARDS: fallback_cards}

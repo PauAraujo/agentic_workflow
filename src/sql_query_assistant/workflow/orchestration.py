@@ -5,7 +5,12 @@ from pathlib import Path
 from ..config import Settings
 from ..llm_client import create_llm_client
 from ..state import WorkflowState
-from ..utils import load_assumption_catalog, load_table_cards, transform_table_card_types
+from ..utils import (
+    load_assumption_catalog,
+    load_table_cards,
+    transform_table_card_types,
+    get_available_schemas,
+)
 from .main_graph import build_main_graph
 
 
@@ -39,6 +44,27 @@ def run_workflow(
     Returns:
         Final workflow state containing intent card, SQL draft, and optional run_id.
     """
+    # Validate schemas upfront if provided
+    if schemas is not None:
+        if len(schemas) == 0:
+            raise ValueError(
+                "schemas list cannot be empty. Use None to query all schemas or provide "
+                "at least one schema name."
+            )
+
+        # Validate that specified schemas exist
+        available_schemas = get_available_schemas(settings)
+        invalid_schemas = [s for s in schemas if s not in available_schemas]
+        if invalid_schemas:
+            raise ValueError(
+                f"Invalid schema(s): {invalid_schemas}. "
+                f"Available schemas: {list(available_schemas.keys())}"
+            )
+
+        logger.info(f"Workflow restricted to schemas: {schemas}")
+    else:
+        logger.info("Workflow using all available schemas")
+
     # Always load assumption catalog
     logger.info("Loading assumption catalog...")
     assumption_catalog = load_assumption_catalog(
@@ -91,6 +117,7 @@ def run_workflow(
         "user_query": user_query,
         "table_cards": table_cards,
         "assumption_catalog": assumption_catalog,
+        "allowed_schemas": schemas,
     }
 
     logger.info("Processing query: %s", initial_state["user_query"])

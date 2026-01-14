@@ -24,6 +24,7 @@ class WorkflowState(TypedDict, total=False):
     user_query: str
     table_cards: list[TableCard]
     assumption_catalog: list[AssumptionCatalogEntry]
+    allowed_schemas: list[str] | None  # None = all schemas, empty list not allowed
 
     # Interpreter output
     selected_assumptions: list[SelectedAssumption]
