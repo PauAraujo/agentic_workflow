@@ -28,7 +28,12 @@ def sample_column():
 def sample_table_card():
     """Create a sample table card for testing."""
     return TableCard(
-        table_metadata=TableMetadata(name="PATIENT", description="Patient data"),
+        table_metadata=TableMetadata(
+            qualified_name="ICSR.PATIENT",
+            schema_name="ICSR",
+            name="PATIENT",
+            description="Patient data",
+        ),
         columns=[
             Column(name="ID", type="NUMBER(15,0)", description="Primary key"),
             Column(name="NAME", type="VARCHAR2(100)", description="Patient name"),
@@ -134,11 +139,21 @@ def test_transform_multiple_table_cards():
     """Test that multiple table cards are all transformed."""
     table_cards = [
         TableCard(
-            table_metadata=TableMetadata(name="TABLE1", description="Table 1"),
+            table_metadata=TableMetadata(
+                qualified_name="ICSR.TABLE1",
+                schema_name="ICSR",
+                name="TABLE1",
+                description="Table 1",
+            ),
             columns=[Column(name="COL1", type="NUMBER(15,0)", description="Col 1")],
         ),
         TableCard(
-            table_metadata=TableMetadata(name="TABLE2", description="Table 2"),
+            table_metadata=TableMetadata(
+                qualified_name="ICSR.TABLE2",
+                schema_name="ICSR",
+                name="TABLE2",
+                description="Table 2",
+            ),
             columns=[Column(name="COL2", type="VARCHAR2(100)", description="Col 2")],
         ),
     ]

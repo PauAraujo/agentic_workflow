@@ -55,6 +55,7 @@ def sample_table_card():
     """Returns a sample TableCard model based on actual ICSR.PATIENT structure."""
     return TableCard(
         table_metadata=TableMetadata(
+            qualified_name="ICSR.PATIENT",
             schema_name="ICSR",
             name="PATIENT",
             synonyms=["Subject", "Case Demographics", "Patient"],
@@ -70,14 +71,22 @@ def sample_table_card():
             Column(
                 name="PATIENT_SEX_ID",
                 type="NUMBER",
-                description="Coded gender. FK to PATIENT_SEX.",
+                description="Coded gender.",
+                fk="ICSR_LOOKUP.PATIENT_SEX.PATIENT_SEX_ID",
+                value_map_ref="PATIENT_SEX",
             ),
             Column(
                 name="PATIENT_AGE_GROUP_ID",
                 type="NUMBER",
-                description="Coded age group. FK to PATIENT_AGE_GROUP.",
+                description="Coded age group.",
+                fk="ICSR_LOOKUP.PATIENT_AGE_GROUP.PATIENT_AGE_GROUP_ID",
+                value_map_ref="PATIENT_AGE_GROUP",
             ),
         ],
+        value_maps={
+            "PATIENT_SEX": {"1": "Male", "2": "Female"},
+            "PATIENT_AGE_GROUP": {"1": "Neonate", "2": "Infant", "3": "Child", "4": "Adolescent", "5": "Adult", "6": "Elderly"},
+        },
     )
 
 
@@ -147,6 +156,7 @@ def sample_raw_table_card_dict():
     """Returns minimal raw dictionary for testing file loaders."""
     return {
         "table_metadata": {
+            "qualified_name": "ICSR.PATIENT",
             "schema_name": "ICSR",
             "name": "PATIENT",
             "synonyms": ["Patient"],

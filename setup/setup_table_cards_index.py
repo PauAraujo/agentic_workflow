@@ -375,14 +375,12 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
     if normalized_column_names_text:
         searchable_parts.append(normalized_column_names_text)
 
-    # Add foreign key information from column-level references
-    column_fk_parts = []
-    for col in table_card.columns:
-        if col.references:
-            ref = col.references
-            column_fk_parts.append(
-                f"{col.name} references {ref.schema_name}.{ref.table}.{ref.column}"
-            )
+    # Add foreign key information from columns
+    column_fk_parts = [
+        f"{col.name} references {col.fk}"
+        for col in table_card.columns
+        if col.fk
+    ]
     if column_fk_parts:
         searchable_parts.append(" ".join(column_fk_parts))
 
