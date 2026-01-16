@@ -221,6 +221,31 @@ class AzureSearchSettings(EnvBaseSettings):
     )
 
 
+class TableSelectorSettings(EnvBaseSettings):
+    """
+    Settings for the Table Selector module.
+    """
+    core_tables: list[str] = Field(
+        validation_alias="TABLE_SELECTOR_CORE_TABLES",
+        default=[
+            "ICSR.SAFETY_REPORT",
+            "ICSR.PATIENT",
+            "ICSR.DRUG",
+            "ICSR.REACTION",
+        ],
+        description="Core tables always shown as 'other available' options (safety net)"
+    )
+    noise_value_maps: list[str] = Field(
+        validation_alias="TABLE_SELECTOR_NOISE_VALUE_MAPS",
+        default=[
+            "NULL_FLAVOUR",
+            "DATE_PRECISION",
+            "NULLFLAVOR",
+        ],
+        description="Value map names to filter out (technical metadata, not business-meaningful)"
+    )
+
+
 class AwsSettings(EnvBaseSettings):
     """
     Settings for AWS Bedrock configuration.
@@ -294,6 +319,14 @@ class AgentSettings(BaseModel):
         ),
         description="Model config for SQL repair agent"
     )
+    table_selector: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(
+            provider="azure",
+            model_name="gpt-4o-mini",
+            temperature=0.0
+        ),
+        description="Model config for table selection agent"
+    )
 
 
 class Settings(EnvBaseSettings):
@@ -309,6 +342,7 @@ class Settings(EnvBaseSettings):
     aws: AwsSettings | None = None
     langfuse: LangfuseSettings | None = None
     azure_search: AzureSearchSettings | None = None
+    table_selector: TableSelectorSettings = Field(default_factory=TableSelectorSettings)
 
     # Paths and workflow config
     paths: PathSettings = Field(default_factory=PathSettings)

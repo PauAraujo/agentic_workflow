@@ -8,6 +8,7 @@ from ..domain import QueryResult
 from ..llm_client import LLMClient
 from ..state import WorkflowState
 from ..modules.table_card_retriever import retrieve_relevant_table_cards
+from ..modules.table_selector import select_tables
 from ..modules.interpreter import build_interpreter_subgraph
 from ..modules.sql_drafter import draft_sql
 from ..modules.sql_validator import validate_sql
@@ -92,17 +93,19 @@ def build_main_graph(
     Compose the main graph with per-agent model configuration.
 
     Workflow:
-    1. table_card_retriever -> interpreter (RAG-based table selection)
-    2. interpreter -> sql_drafter
-    3. sql_drafter -> sql_validator
-    4. sql_validator -> (if valid) sql_executor
+    1. table_card_retriever -> table_selector (RAG-based table selection + refinement)
+    2. table_selector -> interpreter (assumption selection)
+    3. interpreter -> sql_drafter
+    4. sql_drafter -> sql_validator
+    5. sql_validator -> (if valid) sql_executor
                      -> (if invalid and attempts < max) sql_repairer
                      -> (if invalid and attempts >= max) validation_failed (no execution)
-    5. sql_repairer -> sql_validator (retry validation)
-    6. sql_executor/validation_failed -> persistence (optional) -> END
+    6. sql_repairer -> sql_validator (retry validation)
+    7. sql_executor/validation_failed -> persistence (optional) -> END
 
     Logic:
         - The RAG Retriever uses Azure AI Search to select relevant table cards
+        - The Table Selector refines table selection using LLM reasoning
         - The Validator acts as a conditional entry point.
         - If validation fails, the Repairer attempts to fix the SQL based on errors.
         - The loop (Repair -> Validate) continues until the query passes or max_retries is hit.
@@ -118,6 +121,14 @@ def build_main_graph(
     # Build RAG retriever node for table card selection
     table_card_retriever_node = partial(
         retrieve_relevant_table_cards,
+        settings=settings,
+    )
+
+    # Build table selector node for refining table selection
+    table_selector_node = partial(
+        select_tables,
+        client=client,
+        model_config=settings.agents.table_selector,
         settings=settings,
     )
 
@@ -160,6 +171,7 @@ def build_main_graph(
 
     workflow = StateGraph(WorkflowState)
     workflow.add_node("table_card_retriever", table_card_retriever_node)
+    workflow.add_node("table_selector", table_selector_node)
     workflow.add_node("interpreter", interpreter_runnable)
     workflow.add_node("sql_drafter", sql_drafter_node)
     workflow.add_node("sql_validator", sql_validator_node)
@@ -167,9 +179,10 @@ def build_main_graph(
     workflow.add_node("sql_executor", sql_executor_node)
     workflow.add_node("validation_failed", validation_failed_node)
 
-    # Build workflow edges - start with RAG retriever
+    # Build workflow edges
     workflow.set_entry_point("table_card_retriever")
-    workflow.add_edge("table_card_retriever", "interpreter")
+    workflow.add_edge("table_card_retriever", "table_selector")
+    workflow.add_edge("table_selector", "interpreter")
     workflow.add_edge("interpreter", "sql_drafter")
     workflow.add_edge("sql_drafter", "sql_validator")
 

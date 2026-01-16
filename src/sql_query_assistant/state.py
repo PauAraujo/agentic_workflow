@@ -22,7 +22,8 @@ class WorkflowState(TypedDict, total=False):
 
     # Input
     user_query: str
-    table_cards: list[TableCard]
+    table_cards: list[TableCard]  # Relevant tables for the query (filtered by retriever/table_selector)
+    all_table_cards: list[TableCard]  # All available table cards (for table_selector to add missing tables)
     assumption_catalog: list[AssumptionCatalogEntry]
     allowed_schemas: list[str] | None  # None = all schemas, empty list not allowed
 

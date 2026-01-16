@@ -47,10 +47,11 @@ CSV_EXTENSION = ".csv"
 UTF8_ENCODING = "utf-8"
 
 # Value map thresholds
-# ≤50 rows: embed full map
-# >50 rows: 15 samples + _value_column for JOIN guidance
-FULL_EMBED_THRESHOLD = 50
-SAMPLE_SIZE = 15
+# ≤500 rows: embed full map (covers COUNTRY=259, most reference tables)
+# >500 rows: 20 samples + _value_column for JOIN guidance
+# Rationale: Full value maps enable value-based retrieval (e.g., "Netherlands" -> COUNTRY)
+FULL_EMBED_THRESHOLD = 500
+SAMPLE_SIZE = 20
 
 # Lookup schema name
 LOOKUP_SCHEMA_NAME = "ICSR_LOOKUP"
