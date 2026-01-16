@@ -19,10 +19,10 @@ def draft_sql(
     target_dialect: str,
 ) -> WorkflowState:
     """
-    Draft a SQL query using the intent card and available table metadata.
+    Draft a SQL query using the user query and available table metadata.
 
     Args:
-        state: Current state containing intent_card and table_cards.
+        state: Current state containing user_query and table_cards.
         client: LLMClient instance for LLM calls.
         model_config: Model configuration specifying provider, model, and temperature.
         target_dialect: Target SQL dialect for query generation (e.g., 'sqlite', 'postgres').
@@ -35,7 +35,7 @@ def draft_sql(
 
     prompt_messages = prompt_template.format_messages(
         target_dialect=target_dialect,
-        intent_card=json.dumps(state["intent_card"].model_dump(), indent=2),
+        user_query=state["user_query"],
         table_cards=json.dumps(
             [card.model_dump() for card in state["table_cards"]],
             indent=2,

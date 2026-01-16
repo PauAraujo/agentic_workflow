@@ -148,6 +148,7 @@ def main():
         user_query = args.query
         if not user_query:
             user_query = input("Enter your query: ").strip()
+            #user_query = "count number of female patients in the Netherlands"
         if not user_query:
             logger.error("No query provided")
             sys.exit(1)
@@ -166,14 +167,23 @@ def main():
         logger.exception("Workflow failed: %s", exc)
         sys.exit(2)
 
-    logger.info(
-        "Intent Card:\n%s",
-        json.dumps(result_state["intent_card"].model_dump(), indent=2),
-    )
-    logger.info(
-        "SQL Draft:\n%s",
-        json.dumps(result_state["sql_draft"].model_dump(), indent=2),
-    )
+    intent_card = result_state.get("intent_card")
+    if intent_card:
+        logger.info(
+            "Intent Card:\n%s",
+            json.dumps(intent_card.model_dump(), indent=2),
+        )
+    else:
+        logger.info("Intent Card: (not available)")
+
+    sql_draft = result_state.get("sql_draft")
+    if sql_draft:
+        logger.info(
+            "SQL Draft:\n%s",
+            json.dumps(sql_draft.model_dump(), indent=2),
+        )
+    else:
+        logger.info("SQL Draft: (not available)")
 
     if args.no_persist:
         logger.info("Persistence skipped (--no-persist)")

@@ -9,7 +9,6 @@ from ..llm_client import LLMClient
 from ..state import WorkflowState
 from ..modules.table_card_retriever import retrieve_relevant_table_cards
 from ..modules.table_selector import select_tables
-from ..modules.interpreter import build_interpreter_subgraph
 from ..modules.sql_drafter import draft_sql
 from ..modules.sql_validator import validate_sql
 from ..modules.sql_repairer import repair_sql
@@ -94,21 +93,26 @@ def build_main_graph(
 
     Workflow:
     1. table_card_retriever -> table_selector (RAG-based table selection + refinement)
-    2. table_selector -> interpreter (assumption selection)
-    3. interpreter -> sql_drafter
-    4. sql_drafter -> sql_validator
-    5. sql_validator -> (if valid) sql_executor
+    2. table_selector -> sql_drafter (generate SQL from user query and table cards)
+    3. sql_drafter -> sql_validator
+    4. sql_validator -> (if valid) sql_executor
                      -> (if invalid and attempts < max) sql_repairer
                      -> (if invalid and attempts >= max) validation_failed (no execution)
-    6. sql_repairer -> sql_validator (retry validation)
-    7. sql_executor/validation_failed -> persistence (optional) -> END
+    5. sql_repairer -> sql_validator (retry validation)
+    6. sql_executor/validation_failed -> persistence (optional) -> END
+
+    Note:
+        The interpreter module has been de-linked from the workflow. The sql_drafter
+        now works directly with user_query and table_cards without the IntentCard
+        abstraction. The interpreter module code remains in the codebase for reference.
 
     Logic:
         - The RAG Retriever uses Azure AI Search to select relevant table cards
         - The Table Selector refines table selection using LLM reasoning
-        - The Validator acts as a conditional entry point.
-        - If validation fails, the Repairer attempts to fix the SQL based on errors.
-        - The loop (Repair -> Validate) continues until the query passes or max_retries is hit.
+        - The SQL Drafter generates SQL directly from the user query and table metadata
+        - The Validator checks syntax and semantics
+        - If validation fails, the Repairer attempts to fix the SQL based on errors
+        - The loop (Repair -> Validate) continues until the query passes or max_retries is hit
 
     Args:
         client: LLM client supporting multiple providers
@@ -130,12 +134,6 @@ def build_main_graph(
         client=client,
         model_config=settings.agents.table_selector,
         settings=settings,
-    )
-
-    # Build interpreter subgraph with its specific model config
-    interpreter_runnable = build_interpreter_subgraph(
-        client=client,
-        model_config=settings.agents.interpreter,
     )
 
     # Bind dependencies to node functions with agent-specific configs
@@ -172,7 +170,6 @@ def build_main_graph(
     workflow = StateGraph(WorkflowState)
     workflow.add_node("table_card_retriever", table_card_retriever_node)
     workflow.add_node("table_selector", table_selector_node)
-    workflow.add_node("interpreter", interpreter_runnable)
     workflow.add_node("sql_drafter", sql_drafter_node)
     workflow.add_node("sql_validator", sql_validator_node)
     workflow.add_node("sql_repairer", sql_repairer_node)
@@ -182,8 +179,7 @@ def build_main_graph(
     # Build workflow edges
     workflow.set_entry_point("table_card_retriever")
     workflow.add_edge("table_card_retriever", "table_selector")
-    workflow.add_edge("table_selector", "interpreter")
-    workflow.add_edge("interpreter", "sql_drafter")
+    workflow.add_edge("table_selector", "sql_drafter")
     workflow.add_edge("sql_drafter", "sql_validator")
 
     # Conditional routing after validation
