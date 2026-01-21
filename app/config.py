@@ -2,15 +2,13 @@ from pathlib import Path
 
 # Path configuration
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = ROOT / "output"
-STATE_DUMPS_DIR = OUTPUT_DIR / "state_dumps"
 
-# Graph paths
-MAIN_GRAPH_PATH = OUTPUT_DIR / "graphs" / "main_graph.png"
-HEADER_GRAPH_PATH = OUTPUT_DIR / "graphs" / "header.jpg"
-INTERPRETER_GRAPH_PATH = OUTPUT_DIR / "graphs" / "interpreter_subgraph.png"
-SQL_DRAFTER_GRAPH_PATH = OUTPUT_DIR / "graphs" / "sql_drafter_subgraph.png"
-EXECUTOR_GRAPH_PATH = OUTPUT_DIR / "graphs" / "executor_subgraph.png"
+IMAGES_DIR = ROOT / "app" / "images"
+STATE_DUMPS_DIR = ROOT / "output" / "state_dumps"
+
+HEADER_IMG = IMAGES_DIR / "header_image.jpg"
+FLOW_DIGRAM_IMG = IMAGES_DIR / "flow_diagram.png"
+COMPACT_FLOW_DIGRAM_IMG =  IMAGES_DIR / "flow_diagram_compact.png"
 
 # UI Constants
 PRIMARY_BLUE = "#0b2d59"

@@ -2,9 +2,6 @@ from typing import TypedDict
 
 from sql_query_assistant.domain import (
     TableCard,
-    AssumptionCatalogEntry,
-    SelectedAssumption,
-    IntentCard,
     SQLDraft,
     QueryResult,
     ValidationResult,
@@ -15,21 +12,15 @@ class WorkflowState(TypedDict, total=False):
     """
     Global state shared across the full text-to-SQL workflow.
 
-    Input values (user_query, table_cards, assumption_catalog) are provided by the
-    caller. Each module writes its outputs into the same state as the pipeline
-    progresses (e.g., selected_assumptions, intent_card, generated_sql).
+    Input values (user_query, table_cards) are provided by the caller. Each module
+    writes its outputs into the same state as the pipeline progresses.
     """
 
     # Input
     user_query: str
     table_cards: list[TableCard]  # Relevant tables for the query (filtered by retriever/table_selector)
     all_table_cards: list[TableCard]  # All available table cards (for table_selector to add missing tables)
-    assumption_catalog: list[AssumptionCatalogEntry]
     allowed_schemas: list[str] | None  # None = all schemas, empty list not allowed
-
-    # Interpreter output
-    selected_assumptions: list[SelectedAssumption]
-    intent_card: IntentCard
 
     # SQL Drafter output
     sql_draft: SQLDraft

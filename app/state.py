@@ -3,7 +3,7 @@ import streamlit as st
 from typing import Any
 
 from sql_query_assistant import Settings
-from sql_query_assistant.utils import load_table_cards, load_assumption_catalog
+from sql_query_assistant.utils import load_table_cards
 
 
 def initialize_session_state() -> None:
@@ -14,11 +14,13 @@ def initialize_session_state() -> None:
     """
     if "last_state" not in st.session_state:
         st.session_state["last_state"] = None
+    if "workflow_steps" not in st.session_state:
+        st.session_state["workflow_steps"] = None
 
 
 def load_metadata(settings: Settings) -> None:
     """
-    Load table cards and assumption catalog and cache them in session state.
+    Load table cards and cache them in session state.
 
     Loads the data only once on first call, subsequent calls use cached values.
 
@@ -27,8 +29,6 @@ def load_metadata(settings: Settings) -> None:
     """
     if "table_cards" not in st.session_state or st.session_state.get("table_cards") is None:
         st.session_state["table_cards"] = load_table_cards(settings=settings, base_path=None)
-    if "assumption_catalog" not in st.session_state or st.session_state.get("assumption_catalog") is None:
-        st.session_state["assumption_catalog"] = load_assumption_catalog(settings=settings, catalog_path=None)
 
 
 def get_settings() -> Settings:
@@ -75,11 +75,11 @@ def get_table_cards() -> list:
     return st.session_state.get("table_cards", [])
 
 
-def get_assumption_catalog() -> list:
+def has_workflow_results() -> bool:
     """
-    Get loaded assumption catalog from session state.
+    Check if workflow results are available in session state.
 
     Returns:
-        list: List of AssumptionCatalogEntry objects, or empty list if not loaded
+        bool: True if last_state exists and is not None
     """
-    return st.session_state.get("assumption_catalog", [])
+    return st.session_state.get("last_state") is not None

@@ -101,11 +101,6 @@ def build_main_graph(
     5. sql_repairer -> sql_validator (retry validation)
     6. sql_executor/validation_failed -> persistence (optional) -> END
 
-    Note:
-        The interpreter module has been de-linked from the workflow. The sql_drafter
-        now works directly with user_query and table_cards without the IntentCard
-        abstraction. The interpreter module code remains in the codebase for reference.
-
     Logic:
         - The RAG Retriever uses Azure AI Search to select relevant table cards
         - The Table Selector refines table selection using LLM reasoning

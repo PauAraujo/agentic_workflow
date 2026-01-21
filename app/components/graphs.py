@@ -2,7 +2,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from app.config import HEADER_GRAPH_PATH
+from app.config import HEADER_IMG
 
 
 def render_header_graph() -> None:
@@ -11,10 +11,10 @@ def render_header_graph() -> None:
 
     Displays the header graph if it exists, otherwise shows an informational message.
     """
-    if HEADER_GRAPH_PATH.exists():
-        st.image(str(HEADER_GRAPH_PATH))
+    if HEADER_IMG.exists():
+        st.image(str(HEADER_IMG))
     else:
-        st.info("Graph not found. Run python main.py --render-graph to generate output/main_graph.png.")
+        st.info(f"Header image not found at {HEADER_IMG}.")
 
 
 def render_subgraph(path: Path, caption: str | None = None) -> None:

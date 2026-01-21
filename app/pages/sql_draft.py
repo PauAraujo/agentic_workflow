@@ -4,7 +4,7 @@ from app.config import (
     CUSTOM_CSS,
     PAGE_TITLE,
     LAYOUT,
-    SQL_DRAFTER_GRAPH_PATH,
+    FLOW_DIGRAM_IMG,
 )
 from app.state import (
     initialize_session_state,
@@ -42,7 +42,7 @@ def main():
 
     col_img, col_sql = st.columns([1, 1])
     with col_img:
-        render_subgraph(SQL_DRAFTER_GRAPH_PATH)
+        render_subgraph(FLOW_DIGRAM_IMG)
     with col_sql:
         st.code(oracle_sql or "", language="sql")
 

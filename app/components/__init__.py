@@ -1,4 +1,2 @@
-from app.components.intent_card import render_intent_card
 from app.components.table_card import render_table_cards
-from app.components.assumption_card import render_assumptions_catalog
 from app.components.graphs import render_header_graph, render_subgraph

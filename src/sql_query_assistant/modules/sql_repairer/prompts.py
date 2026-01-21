@@ -9,7 +9,7 @@ You will receive:
 - The original SQL that failed
 - Detailed validation errors (syntax errors, conversion errors, or EXPLAIN errors)
 - The target SQL dialect for query generation
-- The intent card describing what the query should accomplish
+- The user query describing what the query should accomplish
 - Table cards with available schema information
 </inputs>
 
@@ -30,17 +30,16 @@ Your task:
    - In FROM/JOIN clauses: use schema.table (e.g., "FROM ICSR.PATIENT p")
    - ALWAYS use table aliases (e.g., "FROM ICSR.PATIENT p")
    - In SELECT/WHERE/ON: use alias.column (e.g., "p.PATIENT_SEX_ID"), NEVER schema.table.column
-   - SQLite does NOT support three-part column references like ICSR.PATIENT.COLUMN
    - If you see an error like "no such column: SCHEMA.TABLE.COLUMN", change to alias.COLUMN
 </repair_guidelines>
 
 <output_format>
 Output JSON only, no prose outside JSON:
-{
+{{
   "sql": "Fixed SQL statement here",
   "rationale": "Brief explanation of what was fixed and why",
   "tables_used": ["SCHEMA_A.TABLE_A", "SCHEMA_B.TABLE_B"]
-}
+}}
 </output_format>"""
 
 
@@ -56,9 +55,9 @@ USER_PROMPT = """<dialect>
 {validation_errors}
 </validation_errors>
 
-<intent_card>
-{intent_card}
-</intent_card>
+<user_query>
+{user_query}
+</user_query>
 
 <table_cards>
 {table_cards}

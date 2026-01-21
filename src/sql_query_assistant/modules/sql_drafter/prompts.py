@@ -13,7 +13,7 @@ Your job is to convert a natural language query into a valid SQL statement using
    - In FROM/JOIN clauses: use schema.table (e.g., "FROM ICSR.PATIENT")
    - ALWAYS use table aliases (e.g., "FROM ICSR.PATIENT p")
    - In SELECT/WHERE/ON: use alias.column (e.g., "p.PATIENT_SEX_ID")
-   - NEVER use three-part references like ICSR.PATIENT.COLUMN (SQLite doesn't support this)
+   - NEVER use three-part references like ICSR.PATIENT.COLUMN
 
 3. USE FOREIGN KEYS FOR JOINS
    - Column "fk" field shows the referenced table (e.g., "fk": "ICSR_LOOKUP.COUNTRY.COUNTRY_ID")
@@ -50,14 +50,5 @@ USER_PROMPT = """<query>
 
 <instructions>
 Generate a SQL query that answers the user's question using only the tables and columns described above.
-
-Respond with this exact JSON structure:
-</instructions>
-
-```json
-{{
-  "sql": "Your SQL statement here",
-  "rationale": "Brief explanation of how the query answers the question",
-  "tables_used": ["SCHEMA.TABLE_A", "SCHEMA.TABLE_B"]
-}}
-```"""
+Include a brief rationale explaining how the query answers the question, and list all schema-qualified table names used.
+</instructions>"""

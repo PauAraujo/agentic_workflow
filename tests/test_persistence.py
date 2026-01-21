@@ -86,8 +86,8 @@ def test_append_to_csv_raises_on_extra_keys(tmp_path):
         _append_to_csv(csv_file, row, fieldnames)
 
 
-def test_save_workflow_results_creates_both_csv_files(dummy_settings, complete_workflow_state):
-    """Create query_runs.csv and query_assumptions.csv with correct data."""
+def test_save_workflow_results_creates_csv_file(dummy_settings, complete_workflow_state):
+    """Create query_runs.csv with correct data."""
     run_id = save_workflow_results(complete_workflow_state, dummy_settings)
 
     # Check run_id is assigned
@@ -105,39 +105,6 @@ def test_save_workflow_results_creates_both_csv_files(dummy_settings, complete_w
         assert rows[0]["user_query"] == "Show me all patients"
         assert rows[0]["sql"] == "SELECT * FROM ICSR.PATIENT"
 
-    # Check query_assumptions.csv exists and has correct structure
-    query_assumptions_file = dummy_settings.paths.query_assumptions_file
-    assert query_assumptions_file.exists()
-
-    with open(query_assumptions_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        assert len(rows) == 1
-        assert rows[0]["run_id"] == "1"
-        assert rows[0]["assumption_id"] == "sex_logic"
-        assert rows[0]["selected_value"] == "INCLUDE_UNKNOWN"
-
-
-def test_save_workflow_results_handles_no_assumptions(dummy_settings, complete_workflow_state):
-    """Handle workflow state with no assumptions gracefully."""
-    # Remove assumptions
-    complete_workflow_state["intent_card"].assumption_response.assumption_choices = []
-
-    run_id = save_workflow_results(complete_workflow_state, dummy_settings)
-
-    assert run_id == 1
-
-    # query_runs.csv should still be created
-    assert dummy_settings.paths.query_runs_file.exists()
-
-    # query_assumptions.csv should be empty (only headers)
-    query_assumptions_file = dummy_settings.paths.query_assumptions_file
-    if query_assumptions_file.exists():
-        content = query_assumptions_file.read_text()
-        lines = [line for line in content.strip().split("\n") if line]
-        # Should only have header row if file exists
-        assert len(lines) <= 1
-
 
 def test_save_full_state_json_creates_valid_json(dummy_settings, complete_workflow_state):
     """Create state JSON file with correct structure and all fields."""
@@ -153,23 +120,21 @@ def test_save_full_state_json_creates_valid_json(dummy_settings, complete_workfl
     # Verify structure
     assert data["user_query"] == "Show me all patients"
     assert isinstance(data["table_cards"], list)
-    assert isinstance(data["assumption_catalog"], list)
-    assert isinstance(data["intent_card"], dict)
     assert isinstance(data["sql_draft"], dict)
     assert data["sql_draft"]["sql"] == "SELECT * FROM ICSR.PATIENT"
 
 
-def test_save_full_state_json_handles_missing_optional_fields(dummy_settings, complete_workflow_state):
-    """Handle state with missing optional fields gracefully."""
-    # Remove optional field
-    del complete_workflow_state["selected_assumptions"]
+def test_save_workflow_results_increments_run_id_sequentially(dummy_settings, complete_workflow_state):
+    """Sequential calls should increment run_id correctly."""
+    import copy
 
-    run_id = 1
-    save_full_state_json(complete_workflow_state, dummy_settings, run_id)
+    run_id_1 = save_workflow_results(complete_workflow_state, dummy_settings)
+    assert run_id_1 == 1
 
-    json_file = dummy_settings.paths.state_dumps_dir / "run_00001.json"
-    with open(json_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    state_copy_2 = copy.deepcopy(complete_workflow_state)
+    run_id_2 = save_workflow_results(state_copy_2, dummy_settings)
+    assert run_id_2 == 2
 
-    # Should serialize with empty list for missing field
-    assert data["selected_assumptions"] == []
+    state_copy_3 = copy.deepcopy(complete_workflow_state)
+    run_id_3 = save_workflow_results(state_copy_3, dummy_settings)
+    assert run_id_3 == 3

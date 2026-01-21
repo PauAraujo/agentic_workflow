@@ -4,7 +4,7 @@ from app.config import (
     CUSTOM_CSS,
     PAGE_TITLE,
     LAYOUT,
-    EXECUTOR_GRAPH_PATH,
+    FLOW_DIGRAM_IMG,
 )
 from app.state import (
     initialize_session_state,
@@ -45,7 +45,7 @@ def main():
 
     col_img, col_metrics = st.columns([1, 1])
     with col_img:
-        render_subgraph(EXECUTOR_GRAPH_PATH)
+        render_subgraph(FLOW_DIGRAM_IMG)
     with col_metrics:
         cols = st.columns(3)
         cols[0].metric("Rows", result_dict.get("row_count", 0))

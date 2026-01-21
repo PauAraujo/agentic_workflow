@@ -4,7 +4,7 @@ from app.config import (
     CUSTOM_CSS,
     PAGE_TITLE,
     LAYOUT,
-    MAIN_GRAPH_PATH,
+    COMPACT_FLOW_DIGRAM_IMG,
 )
 from app.state import initialize_session_state
 from app.components import render_subgraph
@@ -28,7 +28,7 @@ def main():
 
     col_img, col_content = st.columns([1, 1])
     with col_img:
-        render_subgraph(MAIN_GRAPH_PATH, caption="Main graph")
+        render_subgraph(COMPACT_FLOW_DIGRAM_IMG, caption="Main graph")
     with col_content:
         dump_path = select_state_dump()
         if dump_path:

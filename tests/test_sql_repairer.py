@@ -6,7 +6,7 @@ from tests.conftest import DummyLLMClient
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.modules.sql_repairer.models import RawSQLRepairResponse
 from sql_query_assistant.modules.sql_repairer.nodes import repair_sql
-from sql_query_assistant.domain import SQLDraft, IntentCard, InterpreterResponse, ValidationResult
+from sql_query_assistant.domain import SQLDraft, ValidationResult
 
 
 def _make_repair_client(sql, rationale, tables_used):
@@ -19,12 +19,12 @@ def _make_repair_client(sql, rationale, tables_used):
     return cast(LLMClient, DummyLLMClient(llm_response))
 
 
-def _make_repairer_state(sql_draft, validation_result, intent_card, table_cards, repair_attempts=0):
+def _make_repairer_state(sql_draft, validation_result, user_query, table_cards, repair_attempts=0):
     """Build a standard workflow state dict for repairer tests."""
     return {
         "sql_draft": sql_draft,
         "validation_result": validation_result,
-        "intent_card": intent_card,
+        "user_query": user_query,
         "table_cards": table_cards if isinstance(table_cards, list) else [table_cards],
         "repair_attempts": repair_attempts,
         "repair_history": [],
@@ -41,17 +41,8 @@ def failed_validation():
     )
 
 
-@pytest.fixture
-def basic_intent_card():
-    """Returns a minimal intent card for repair tests."""
-    return IntentCard(
-        task="Count all patients",
-        assumption_response=InterpreterResponse(assumption_choices=[]),
-    )
-
-
 def test_repair_sql_returns_new_sql_draft(
-    sample_table_card, basic_intent_card, failed_validation, dummy_settings
+    sample_table_card, failed_validation, dummy_settings
 ):
     """Repairer should return a new SQLDraft with repaired SQL."""
     original_draft = SQLDraft(
@@ -68,7 +59,7 @@ def test_repair_sql_returns_new_sql_draft(
     )
 
     state = _make_repairer_state(
-        original_draft, failed_validation, basic_intent_card, sample_table_card
+        original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
     result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
@@ -84,7 +75,7 @@ def test_repair_sql_returns_new_sql_draft(
 
 
 def test_repair_sql_increments_repair_attempts(
-    sample_table_card, basic_intent_card, failed_validation, dummy_settings
+    sample_table_card, failed_validation, dummy_settings
 ):
     """Repairer should increment repair_attempts counter."""
     original_draft = SQLDraft(
@@ -102,7 +93,7 @@ def test_repair_sql_increments_repair_attempts(
 
     # Start with repair_attempts = 1
     state = _make_repairer_state(
-        original_draft, failed_validation, basic_intent_card, sample_table_card, repair_attempts=1
+        original_draft, failed_validation, "Count all patients", sample_table_card, repair_attempts=1
     )
 
     result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
@@ -112,7 +103,7 @@ def test_repair_sql_increments_repair_attempts(
 
 
 def test_repair_sql_tracks_repair_history(
-    sample_table_card, basic_intent_card, failed_validation, dummy_settings
+    sample_table_card, failed_validation, dummy_settings
 ):
     """Repairer should append new draft to repair_history."""
     original_draft = SQLDraft(
@@ -129,7 +120,7 @@ def test_repair_sql_tracks_repair_history(
     )
 
     state = _make_repairer_state(
-        original_draft, failed_validation, basic_intent_card, sample_table_card
+        original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
     result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
@@ -144,7 +135,7 @@ def test_repair_sql_tracks_repair_history(
 
 
 def test_repair_sql_uses_validation_errors_in_prompt(
-    sample_table_card, basic_intent_card, failed_validation, dummy_settings
+    sample_table_card, failed_validation, dummy_settings
 ):
     """Repairer should pass validation errors to LLM for context."""
     original_draft = SQLDraft(
@@ -161,7 +152,7 @@ def test_repair_sql_uses_validation_errors_in_prompt(
     )
 
     state = _make_repairer_state(
-        original_draft, failed_validation, basic_intent_card, sample_table_card
+        original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
     repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
@@ -181,7 +172,7 @@ def test_repair_sql_handles_missing_required_state(dummy_settings):
     # Missing validation_result
     incomplete_state = {
         "sql_draft": SQLDraft(sql="SELECT 1", rationale="test", tables_used=[], dialect="sqlite"),
-        "intent_card": IntentCard(task="test", assumption_response=InterpreterResponse(assumption_choices=[])),
+        "user_query": "test query",
     }
 
     client = _make_repair_client(sql="SELECT 1", rationale="", tables_used=[])
@@ -193,7 +184,7 @@ def test_repair_sql_handles_missing_required_state(dummy_settings):
 
 
 def test_repair_sql_preserves_history_on_llm_failure(
-    sample_table_card, basic_intent_card, failed_validation, dummy_settings
+    sample_table_card, failed_validation, dummy_settings
 ):
     """Should preserve repair history even if LLM call fails."""
     original_draft = SQLDraft(
@@ -216,7 +207,7 @@ def test_repair_sql_preserves_history_on_llm_failure(
     ]
 
     state = _make_repairer_state(
-        original_draft, failed_validation, basic_intent_card, sample_table_card, repair_attempts=1
+        original_draft, failed_validation, "Count all patients", sample_table_card, repair_attempts=1
     )
     state["repair_history"] = existing_history
 

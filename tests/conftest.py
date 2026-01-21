@@ -2,13 +2,11 @@ import pytest
 
 from sql_query_assistant.config import AzureSettings, PathSettings, Settings
 from sql_query_assistant.domain import (
-    AssumptionCatalogEntry,
-    AssumptionOption,
     TableCard,
     TableMetadata,
     Column,
+    SQLDraft
 )
-
 
 class DummyLLMClient:
     "Fakes UnifiedLLMClient.call_llm to avoid network calls and capture prompt data"
@@ -85,70 +83,14 @@ def sample_table_card():
         ],
         value_maps={
             "PATIENT_SEX": {"1": "Male", "2": "Female"},
-            "PATIENT_AGE_GROUP": {"1": "Neonate", "2": "Infant", "3": "Child", "4": "Adolescent", "5": "Adult", "6": "Elderly"},
+            "PATIENT_AGE_GROUP": {"1": "Neonate",
+                                  "2": "Infant",
+                                  "3": "Child",
+                                  "4": "Adolescent",
+                                  "5": "Adult",
+                                  "6": "Elderly"},
         },
     )
-
-
-@pytest.fixture
-def sample_assumption_catalog():
-    """Returns a sample assumption catalog with realistic option values."""
-    return [
-        AssumptionCatalogEntry(
-            id="sex_logic",
-            label="Gender Inclusion Scope",
-            description="Define if analysis is strictly binary or inclusive of unknown data.",
-            default="BINARY_STRICT",
-            options=[
-                AssumptionOption(
-                    value="BINARY_STRICT",
-                    label="Binary only",
-                    description="Only include ID 1 (Male) and 2 (Female).",
-                ),
-                AssumptionOption(
-                    value="INCLUDE_UNKNOWN",
-                    label="Include unknown",
-                    description="Include Nulls and NullFlavors (UNK, MSK, NASK).",
-                ),
-            ],
-        ),
-        AssumptionCatalogEntry(
-            id="age_logic",
-            label="Age Selection Method",
-            description="Decide whether to use the Reported Group (safer) or Calculated Age (precise).",
-            default="REPORTED_GROUP",
-            options=[
-                AssumptionOption(
-                    value="REPORTED_GROUP",
-                    label="Reported age group",
-                    description="Use PATIENT_AGE_GROUP_ID. Best for terms like 'Adult', 'Child', 'Elderly'.",
-                ),
-                AssumptionOption(
-                    value="CALCULATED_YEARS",
-                    label="Calculated age (years)",
-                    description="Use ONSET_AGE where Unit is Years. Best for 'Older than 50', 'Between 20 and 30'.",
-                ),
-            ],
-        ),
-        AssumptionCatalogEntry(
-            id="date_basis",
-            label="Temporal Basis",
-            description="Which date field drives the timeline.",
-            default="DB_ENTRY",
-            options=[
-                AssumptionOption(
-                    value="DB_ENTRY",
-                    label="Database entry date",
-                    description="Use CREATED_ON (System Date).",
-                ),
-                AssumptionOption(
-                    value="EVENT_ONSET",
-                    label="Clinical event date",
-                    description="Use REACTION.START_DATE (Clinical Date) - Requires Join to REACTION table.",
-                ),
-            ],
-        ),
-    ]
 
 
 @pytest.fixture
@@ -174,67 +116,23 @@ def sample_raw_table_card_dict():
 
 
 @pytest.fixture
-def sample_raw_assumption_catalog_dict():
-    """Returns minimal raw dictionary for testing file loaders."""
-    return [
-        {
-            "id": "sex_logic",
-            "label": "Gender Inclusion Scope",
-            "description": "Define if analysis is strictly binary or inclusive of unknown data.",
-            "options": [
-                {
-                    "value": "BINARY_STRICT",
-                    "label": "Binary only",
-                    "description": "Only include ID 1 (Male) and 2 (Female).",
-                },
-                {
-                    "value": "INCLUDE_UNKNOWN",
-                    "label": "Include unknown",
-                    "description": "Include Nulls and NullFlavors (UNK, MSK, NASK).",
-                },
-            ],
-        }
-    ]
-
-@pytest.fixture
-def complete_workflow_state(sample_table_card, sample_assumption_catalog):
+def complete_workflow_state(sample_table_card):
     """
     Returns a complete WorkflowState with all fields populated.
 
     Useful for testing persistence module which expects fully executed workflow state.
     """
-    from sql_query_assistant.domain import IntentCard, InterpreterResponse, SelectedAssumption, SQLDraft
-
-    selected_assumption = SelectedAssumption(
-        assumption_id="sex_logic",
-        assumption_label="Gender Inclusion Scope",
-        selected_value="INCLUDE_UNKNOWN",
-        selected_label="Include unknown",
-        option_description="Include Nulls and NullFlavors (UNK, MSK, NASK).",
-        rationale="User query mentions 'all patients' suggesting inclusivity",
-        available_options=None,
-    )
-
-    intent_card = IntentCard(
-        task="Show me all patients",
-        assumption_response=InterpreterResponse(
-            assumption_choices=[selected_assumption]
-        ),
-    )
 
     sql_draft = SQLDraft(
         sql="SELECT * FROM ICSR.PATIENT",
         rationale="Simple query to return all patient records",
-        tables_used=["ICSR.PATIENT"],  # Note: LLM may use qualified or unqualified names
+        tables_used=["ICSR.PATIENT"],
         dialect="sqlite",
     )
 
     return {
         "user_query": "Show me all patients",
         "table_cards": [sample_table_card],
-        "assumption_catalog": sample_assumption_catalog,
-        "selected_assumptions": [selected_assumption],
-        "intent_card": intent_card,
         "sql_draft": sql_draft,
     }
 

@@ -1,11 +1,10 @@
 import json
-import yaml
 import logging
 
 from pathlib import Path
 
 from sql_query_assistant.config import Settings
-from sql_query_assistant.domain import AssumptionCatalogEntry, TableCard
+from sql_query_assistant.domain import TableCard
 
 logger = logging.getLogger(__name__)
 
@@ -93,45 +92,3 @@ def load_table_cards(
         logger.info("Loaded %d table cards from %d schema(s)", len(table_cards), len(schema_dirs))
 
     return table_cards
-
-
-def load_assumption_catalog(
-    settings: Settings,
-    catalog_path: Path | None = None,
-) -> list[AssumptionCatalogEntry]:
-    """
-    Load the assumptions catalog from YAML file.
-
-    If catalog_path is not provided, uses the configured assumptions_catalog_file.
-
-    Args:
-        settings: Settings instance to use for path resolution.
-        catalog_path: Path to the assumptions catalog YAML file.
-                      If None, uses the default from PathSettings.
-
-    Returns:
-        Assumption catalog as a list of validated models
-
-    Raises:
-        FileNotFoundError: If the assumptions catalog file doesn't exist
-        yaml.YAMLError: If YAML syntax is invalid
-        ValueError: If catalog is not a list
-        ValidationError: If entries don't match AssumptionCatalogEntry schema
-    """
-    if catalog_path is None:
-        catalog_path = settings.paths.assumptions_catalog_file
-
-    if not catalog_path.exists():
-        raise FileNotFoundError(f"Assumptions catalog file not found: {catalog_path}")
-
-    logger.info("Loading assumptions catalog from %s", catalog_path)
-
-    raw_catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or []
-
-    if not isinstance(raw_catalog, list):
-        raise ValueError(f"Assumptions catalog must be a list, got {type(raw_catalog).__name__}")
-
-    catalog = [AssumptionCatalogEntry.model_validate(entry) for entry in raw_catalog]
-
-    logger.info("Loaded %d assumptions", len(catalog))
-    return catalog

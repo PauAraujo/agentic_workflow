@@ -21,14 +21,9 @@ def persist_results(state: WorkflowState, settings: Settings) -> WorkflowState:
     """
     logger.info("Persisting workflow results")
 
-    intent_card = state.get("intent_card")
     sql_draft = state.get("sql_draft")
-    if not intent_card or not sql_draft:
-        logger.warning(
-            "Missing required data for persistence. intent_card=%s, sql_draft=%s. Skipping save.",
-            "present" if intent_card else "MISSING",
-            "present" if sql_draft else "MISSING",
-        )
+    if not sql_draft:
+        logger.warning("Missing sql_draft for persistence. Skipping save.")
         return {}
 
     run_id = save_workflow_results(state, settings)

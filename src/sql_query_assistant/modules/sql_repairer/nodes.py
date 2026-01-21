@@ -35,13 +35,13 @@ def repair_sql(
     """
     validation_result = state.get("validation_result")
     sql_draft = state.get("sql_draft")
-    intent_card = state.get("intent_card")
+    user_query = state.get("user_query")
     table_cards = state.get("table_cards")
     repair_attempts = state.get("repair_attempts", 0)
     repair_history = state.get("repair_history", [])
 
-    if not validation_result or not sql_draft or not intent_card:
-        logger.error("Missing required state for repair: validation_result, sql_draft, or intent_card")
+    if not validation_result or not sql_draft or not user_query:
+        logger.error("Missing required state for repair: validation_result, sql_draft, or user_query")
         return {}
 
     # Increment repair attempts
@@ -59,7 +59,7 @@ def repair_sql(
         target_dialect=target_dialect,
         original_sql=sql_draft.sql,
         validation_errors=validation_errors,
-        intent_card=json.dumps(intent_card.model_dump(), indent=2),
+        user_query=user_query,
         table_cards=json.dumps([tc.model_dump() for tc in table_cards], indent=2),
         repair_attempt=repair_attempts,
         max_attempts=max_repair_attempts

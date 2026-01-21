@@ -11,161 +11,117 @@ from sql_query_assistant.domain import TableCard
 logger = logging.getLogger(__name__)
 
 
-def _format_table_summary(
+def _format_table_card(
     table_card: TableCard,
     noise_value_maps: set[str],
-    include_value_maps: bool = True,
+    verbose: bool = True,
 ) -> str:
     """
-    Format a primary candidate table card into a DETAILED summary for retrieved tables.
+    Format a table card as a text summary for the LLM prompt.
 
-    Uses structured indentation to help LLM parse column information clearly.
+    Args:
+        table_card: The table card to format.
+        noise_value_maps: Set of value map names to exclude (uppercase).
+        verbose: If True, use detailed format with columns section and longer labels.
+                 If False, use compact format for "other available" tables.
 
-    Example output format:
+    Returns:
+        Formatted string representation of the table card.
+
+    Example verbose output:
         Table: ICSR.PATIENT
           Description: Patient demographics information
           Row count: 32,266,983
           Columns:
             - SAFETY_REPORT_ID: Foreign key linking to the safety report
             - PATIENT_SEX_ID: Gender of the patient
-            - PATIENT_AGE: Age at time of reaction onset
-            - PATIENT_WEIGHT, PATIENT_HEIGHT (no description)
-          Foreign keys: PATIENT_SEX_ID -> ICSR_LOOKUP.PATIENT_SEX.PATIENT_SEX_ID, ...
-          Lookups: PATIENT_SEX (all 2 values): Male, Female; ...
-    """
-    metadata = table_card.table_metadata
-    lines = [
-        f"Table: {metadata.qualified_name}",
-        f"  Description: {metadata.description or 'No description'}",
-        f"  Row count: {metadata.row_count or 'Unknown'}",
-    ]
+          Foreign keys: PATIENT_SEX_ID -> ICSR_LOOKUP.PATIENT_SEX.PATIENT_SEX_ID
+          Lookups: PATIENT_SEX (all 2 values): Male, Female
 
-    # Structured column format: descriptions help LLM understand column purpose
-    # Columns WITH descriptions get their own indented line for clarity
-    # Columns WITHOUT descriptions are grouped at the end to save space
-    cols_with_desc = []
-    cols_without_desc = []
-    for col in table_card.columns:
-        if col.description and col.description.strip():
-            # Truncate long descriptions to keep prompt manageable
-            desc = col.description.strip()[:80]
-            cols_with_desc.append(f"    - {col.name}: {desc}")
-        else:
-            cols_without_desc.append(col.name)
-
-    if cols_with_desc or cols_without_desc:
-        lines.append("  Columns:")
-        lines.extend(cols_with_desc)
-        if cols_without_desc:
-            # Group undocumented columns on one line to save tokens
-            lines.append(f"    - {', '.join(cols_without_desc)} (no description)")
-
-    # Extract FK relationships with FULL qualified paths (not shortened)
-    fk_columns = []
-    for col in table_card.columns:
-        if col.fk: # Full paths help LLM understand the exact join target
-            fk_columns.append(f"{col.name} -> {col.fk}")
-    if fk_columns:
-        lines.append(f"  Foreign keys: {', '.join(fk_columns)}")
-
-    # Value maps are important for table selection - they show what values can be
-    # filtered on (e.g., "Netherlands" appears in COUNTRY value_map)
-    if include_value_maps and table_card.value_maps:
-        # Filter out noise value_maps (technical metadata, not business-meaningful)
-        meaningful_maps = {
-            name: vmap for name, vmap in table_card.value_maps.items()
-            if name.upper() not in noise_value_maps
-        }
-
-        value_map_summaries = []
-        # Show all meaningful value maps (noise already filtered above)
-        for map_name, vmap in meaningful_maps.items():
-            count = vmap.get("_count", len(vmap) - 1)
-            is_sampled = "_value_column" in vmap
-
-            # We filter metadata keys (_count, _value_column) BEFORE sampling
-            real_values = [str(v) for k, v in vmap.items() if not str(k).startswith("_")]
-            sample_values = real_values[:5]
-
-            if sample_values:
-                if is_sampled:
-                    # We explicitly tell the LLM "X of Y shown"
-                    # to make it clear this is a partial list, and guide it to find values not shown
-                    search_col = vmap.get("_value_column", "NAME")
-                    value_map_summaries.append(
-                        f"{map_name} ({len(sample_values)} of {count} shown, JOIN on {search_col} to find others): {', '.join(sample_values)}..."
-                    )
-                else:
-                    # "all X values" - LLM knows this is exhaustive
-                    value_map_summaries.append(
-                        f"{map_name} (all {count} values): {', '.join(sample_values)}{'...' if len(real_values) > 5 else ''}"
-                    )
-        if value_map_summaries:
-            lines.append(f"  Lookups: {'; '.join(value_map_summaries)}")
-
-    return "\n".join(lines)
-
-
-def _format_table_brief(table_card: TableCard, noise_value_maps: set[str]) -> str:
-    """
-    Format a COMPACT summary for "other available" tables.
-
-    This format is used for tables that weren't retrieved but could be added.
-    We show less detail to keep the prompt size manageable.
-
-    Example output format:
+    Example compact output:
         ICSR.SAFETY_REPORT
           Desc: The identification information of the safety report
           Rows: 30,862,461
-          FKs: COUNTRY_ID -> ICSR_LOOKUP.COUNTRY.COUNTRY_ID, ...
-          Lookups: COUNTRY(3 of 259 shown, JOIN on NAME)=[UK, Germany...]; REPORT_TYPE(all 5)=[Initial, Follow-up...]
+          FKs: COUNTRY_ID -> ICSR_LOOKUP.COUNTRY.COUNTRY_ID
+          Lookups: COUNTRY(3 of 259 shown, JOIN on NAME)=[UK, Germany...]
     """
     metadata = table_card.table_metadata
-    parts = [f"{metadata.qualified_name}"]
+    lines = []
 
-    if metadata.description:
-        parts.append(f"  Desc: {metadata.description[:100]}")
+    # Header and basic info
+    if verbose:
+        lines.append(f"Table: {metadata.qualified_name}")
+        lines.append(f"  Description: {metadata.description or 'No description'}")
+        lines.append(f"  Row count: {metadata.row_count or 'Unknown'}")
+    else:
+        lines.append(metadata.qualified_name)
+        if metadata.description:
+            lines.append(f"  Desc: {metadata.description[:100]}")
+        if metadata.row_count:
+            lines.append(f"  Rows: {metadata.row_count:,}")
 
-    # Row count helps LLM distinguish fact tables (millions) from lookups (< 1000)
-    if metadata.row_count:
-        parts.append(f"  Rows: {metadata.row_count:,}")
+    # Columns section (verbose only)
+    if verbose:
+        cols_with_desc = []
+        cols_without_desc = []
+        for col in table_card.columns:
+            if col.description and col.description.strip():
+                desc = col.description.strip()[:80]
+                cols_with_desc.append(f"    - {col.name}: {desc}")
+            else:
+                cols_without_desc.append(col.name)
 
-    # Show ALL FK paths - missing FKs could cause LLM to miss valid join paths
-    # Full paths (not abbreviated) help LLM understand exact join targets
-    fk_columns = []
-    for col in table_card.columns:
-        if col.fk:
-            fk_columns.append(f"{col.name} -> {col.fk}")
+        if cols_with_desc or cols_without_desc:
+            lines.append("  Columns:")
+            lines.extend(cols_with_desc)
+            if cols_without_desc:
+                lines.append(f"    - {', '.join(cols_without_desc)} (no description)")
+
+    # Foreign keys
+    fk_columns = [f"{col.name} -> {col.fk}" for col in table_card.columns if col.fk]
     if fk_columns:
-        parts.append(f"  FKs: {', '.join(fk_columns)}")
+        label = "Foreign keys" if verbose else "FKs"
+        lines.append(f"  {label}: {', '.join(fk_columns)}")
 
-    # Show all meaningful value maps (noise filtered out)
+    # Value maps
     if table_card.value_maps:
         meaningful_maps = {
             name: vmap for name, vmap in table_card.value_maps.items()
             if name.upper() not in noise_value_maps
         }
 
-        vmap_info = []
+        sample_limit = 5 if verbose else 3
+        vmap_parts = []
+
         for map_name, vmap in meaningful_maps.items():
+            count = vmap.get("_count", len(vmap) - 1)
             is_sampled = "_value_column" in vmap
-            count = vmap.get("_count", 0)
-
-            # Filter metadata keys before sampling
             real_values = [str(v) for k, v in vmap.items() if not str(k).startswith("_")]
-            sample_values = real_values[:3]
+            sample_values = real_values[:sample_limit]
 
-            if sample_values:
+            if not sample_values:
+                continue
+
+            search_col = vmap.get("_value_column", "NAME")
+
+            if verbose:
                 if is_sampled:
-                    # Explicit: "X of Y shown"
-                    search_col = vmap.get("_value_column", "NAME")
-                    vmap_info.append(f"{map_name}({len(sample_values)} of {count} shown, JOIN on {search_col})=[{', '.join(sample_values)}...]")
+                    vmap_parts.append(
+                        f"{map_name} ({len(sample_values)} of {count} shown, JOIN on {search_col} to find others): {', '.join(sample_values)}..."
+                    )
                 else:
-                    vmap_info.append(f"{map_name}(all {count})=[{', '.join(sample_values)}...]")
-        if vmap_info:
-            parts.append(f"  Lookups: {'; '.join(vmap_info)}")
+                    ellipsis = "..." if len(real_values) > sample_limit else ""
+                    vmap_parts.append(f"{map_name} (all {count} values): {', '.join(sample_values)}{ellipsis}")
+            else:
+                if is_sampled:
+                    vmap_parts.append(f"{map_name}({len(sample_values)} of {count} shown, JOIN on {search_col})=[{', '.join(sample_values)}...]")
+                else:
+                    vmap_parts.append(f"{map_name}(all {count})=[{', '.join(sample_values)}...]")
 
-    return "\n".join(parts)
+        if vmap_parts:
+            lines.append(f"  Lookups: {'; '.join(vmap_parts)}")
+
+    return "\n".join(lines)
 
 
 def select_tables(
@@ -261,11 +217,11 @@ def select_tables(
     # Format prompt and call LLM
     # Retrieved tables get detailed summaries (more context for decision)
     retrieved_summaries = "\n\n".join(
-        _format_table_summary(card, noise_value_maps) for card in retrieved_cards
+        _format_table_card(card, noise_value_maps, verbose=True) for card in retrieved_cards
     )
     # Core tables (not already retrieved) get brief summaries as options to add
     other_summaries = "\n".join(
-        _format_table_brief(card, noise_value_maps) for card in other_available_tables
+        _format_table_card(card, noise_value_maps, verbose=False) for card in other_available_tables
     )
 
     prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
@@ -336,7 +292,6 @@ def select_tables(
     logger.info("Rationale: %s", llm_response.rationale)
 
     # Safety fallbacks: The LLM might make mistakes. These guards prevent catastrophic failures.
-
     # Guard 1: Never return empty result
     if not refined_cards:
         logger.warning(

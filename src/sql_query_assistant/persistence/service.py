@@ -23,14 +23,6 @@ QUERY_RUNS_FIELDNAMES = [
     "tables_used",
     "deployment_name",
 ]
-QUERY_ASSUMPTIONS_FIELDNAMES = [
-    RUN_ID_COLUMN,
-    "assumption_id",
-    "assumption_label",
-    "selected_value",
-    "selected_label",
-    "rationale",
-]
 JSON_FILENAME_PATTERN = "run_{:05d}.json"
 
 
@@ -46,7 +38,6 @@ def _get_next_run_id(query_runs_file: Path) -> int:
     Returns:
         Next run ID (1 if file doesn't exist, otherwise max_id + 1)
     """
-    # TODO: reads the CSV without locking to pick max(run_id)+1, so concurrent writers can duplicate IDs (race condition)
     if not query_runs_file.exists():
         return 1
 
@@ -99,11 +90,7 @@ def _append_to_csv(file_path: Path, row: dict[str, Any], fieldnames: list[str]) 
 
 def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
     """
-    Save workflow results as normalized CSVs.
-
-    Creates two CSV files:
-    - One for query runs
-    - One for associated assumptions
+    Save workflow results to CSV.
 
     Args:
         state: Complete workflow state after execution
@@ -116,16 +103,11 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     query_runs_file = settings.paths.query_runs_file
-    query_assumptions_file = settings.paths.query_assumptions_file
-
-    # Get next run ID
-    run_id = _get_next_run_id(query_runs_file) # TODO: ensure run_id generation is atomic to prevent duplicate IDs across parallel runs
+    sql_draft = state["sql_draft"]
     timestamp = datetime.now().isoformat()
 
-    intent_card = state["intent_card"]
-    sql_draft = state["sql_draft"]
+    run_id = _get_next_run_id(query_runs_file)
 
-    # Save query run
     query_run_row = {
         RUN_ID_COLUMN: run_id,
         "timestamp": timestamp,
@@ -139,24 +121,6 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> int:
 
     _append_to_csv(query_runs_file, query_run_row, QUERY_RUNS_FIELDNAMES)
     logger.info("Saved query run #%d to %s", run_id, query_runs_file)
-
-    # Save assumptions
-    assumptions = intent_card.assumption_response.assumption_choices
-    if assumptions:
-        for assumption in assumptions:
-            assumption_row = {
-                RUN_ID_COLUMN: run_id,
-                "assumption_id": assumption.assumption_id,
-                "assumption_label": assumption.assumption_label or "",
-                "selected_value": assumption.selected_value,
-                "selected_label": assumption.selected_label or "",
-                "rationale": assumption.rationale,
-            }
-            _append_to_csv(query_assumptions_file, assumption_row, QUERY_ASSUMPTIONS_FIELDNAMES)
-
-        logger.info("Saved %d assumptions to %s", len(assumptions), query_assumptions_file)
-    else:
-        logger.info("No assumptions to save for run #%d", run_id)
 
     return run_id
 
@@ -185,9 +149,6 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
     serializable_state = {
         "user_query": state["user_query"],
         "table_cards": [card.model_dump() for card in state["table_cards"]],
-        "assumption_catalog": [entry.model_dump() for entry in state["assumption_catalog"]],
-        "selected_assumptions": [assum.model_dump() for assum in state.get("selected_assumptions", [])],
-        "intent_card": state["intent_card"].model_dump() if state.get("intent_card") else None,
         "sql_draft": state["sql_draft"].model_dump() if state.get("sql_draft") else None,
     }
 

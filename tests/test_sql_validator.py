@@ -45,9 +45,13 @@ def empty_db(dummy_settings):
     return dummy_settings
 
 
-def test_validate_sql_passes_valid_query(db_with_patient_table):
-    """Valid SQL should pass both SQLGlot parse and EXPLAIN validation."""
-    state = _make_validator_state("SELECT id, name FROM ICSR.PATIENT WHERE id = 1")
+@pytest.mark.parametrize("sql", [
+    "SELECT id, name FROM ICSR.PATIENT WHERE id = 1",
+    "SELECT * FROM ICSR.PATIENT",
+])
+def test_validate_sql_allows_basic_selects(db_with_patient_table, sql):
+    """Valid SELECT queries should pass SQLGlot parse and EXPLAIN validation."""
+    state = _make_validator_state(sql)
 
     result = validate_sql(state, db_with_patient_table)
 
@@ -130,15 +134,6 @@ def test_validate_sql_blocks_write_operations(db_with_patient_table, operation, 
 
     assert not validation.is_valid
     assert len(validation.syntax_errors) > 0
-
-
-def test_validate_sql_allows_select_operations(db_with_patient_table):
-    """Verify SELECT queries work (control test after blocking write operations)."""
-    state = _make_validator_state("SELECT * FROM ICSR.PATIENT")
-    result = validate_sql(state, db_with_patient_table)
-    validation = result["validation_result"]
-
-    assert validation.is_valid
 
 
 def test_validate_sql_allows_cte_queries(db_with_patient_table):

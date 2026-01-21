@@ -35,10 +35,7 @@ class PathSettings(BaseModel):
     input_dir: Path = PROJECT_ROOT / "input"
     output_dir: Path = PROJECT_ROOT / "output"
     table_cards_subdir: str = "table_cards"
-    assumptions_catalog_subdir: str = "assumptions_catalog"
-    assumptions_catalog_filename: str = "assumptions_catalog.yaml"
     query_runs_filename: str = "query_runs.csv"
-    query_assumptions_filename: str = "query_assumptions.csv"
     state_dumps_subdir: str = "state_dumps"
     schemas_dir: str = "schemas_dir"
 
@@ -47,20 +44,8 @@ class PathSettings(BaseModel):
         return self.input_dir / self.table_cards_subdir
 
     @property
-    def assumptions_catalog_file(self) -> Path:
-        return (
-            self.input_dir
-            / self.assumptions_catalog_subdir
-            / self.assumptions_catalog_filename
-        )
-
-    @property
     def query_runs_file(self) -> Path:
         return self.output_dir / self.query_runs_filename
-
-    @property
-    def query_assumptions_file(self) -> Path:
-        return self.output_dir / self.query_assumptions_filename
 
     @property
     def state_dumps_dir(self) -> Path:
@@ -150,10 +135,10 @@ class AzureSearchSettings(EnvBaseSettings):
         validation_alias="AZURE_SEARCH_ENDPOINT",
         description="Azure AI Search endpoint URL"
     )
-    admin_key: str = Field(
+    admin_key: str | None = Field(
         validation_alias="AZURE_SEARCH_ADMIN_KEY",
-        description="Azure AI Search admin key for indexing",
-        min_length=1
+        description="Azure AI Search admin key for indexing (only needed for setup scripts)",
+        default=None,
     )
     query_key: str = Field(
         validation_alias="AZURE_SEARCH_QUERY_KEY",
@@ -295,14 +280,6 @@ class AgentSettings(BaseModel):
 
     Each agent can use a different provider and model.
     """
-    interpreter: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(
-            provider="azure",
-            model_name="gpt-4o-mini",
-            temperature=0.0
-        ),
-        description="Model config for query interpretation agent"
-    )
     drafter: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             provider="azure",
@@ -353,7 +330,7 @@ class Settings(EnvBaseSettings):
     )
     max_repair_attempts: int = Field(
         validation_alias="MAX_REPAIR_ATTEMPTS",
-        default=3,
+        default=1,
         description="Maximum number of SQL repair attempts when validation fails"
     )
 
@@ -398,10 +375,10 @@ class Settings(EnvBaseSettings):
         Parse agent configurations from environment variables.
 
         Supports format: {AGENT}_MODEL_PROVIDER, {AGENT}_MODEL_NAME, {AGENT}_TEMPERATURE
-        Example: INTERPRETER_MODEL_PROVIDER=azure, INTERPRETER_MODEL_NAME=gpt-4o-mini
+        Example: DRAFTER_MODEL_PROVIDER=azure, DRAFTER_MODEL_NAME=gpt-4o
         """
 
-        for agent_name in ["interpreter", "drafter", "repairer"]:
+        for agent_name in ["drafter", "repairer", "table_selector"]:
             provider_key = f"{agent_name.upper()}_MODEL_PROVIDER"
             model_key = f"{agent_name.upper()}_MODEL_NAME"
             temp_key = f"{agent_name.upper()}_TEMPERATURE"
@@ -437,7 +414,7 @@ class Settings(EnvBaseSettings):
     @model_validator(mode="after")
     def validate_provider_availability(self) -> "Settings":
         """Ensure required providers are configured for selected agents."""
-        for agent_name in ["interpreter", "drafter", "repairer"]:
+        for agent_name in ["drafter", "repairer", "table_selector"]:
             agent_config = getattr(self.agents, agent_name)
 
             if agent_config.provider == "aws" and self.aws is None:

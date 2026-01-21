@@ -3,16 +3,14 @@ import json
 import logging
 import argparse
 
-from pathlib import Path
 from dotenv import load_dotenv
 
-from sql_query_assistant import Settings, WorkflowState, create_llm_client
-from sql_query_assistant.workflow import build_main_graph, run_workflow
-
-load_dotenv()
+from sql_query_assistant import Settings, WorkflowState
+from sql_query_assistant.workflow import WorkflowRunner
 
 logger = logging.getLogger(__name__)
 
+load_dotenv(override=True)
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
@@ -30,29 +28,9 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
     parser.add_argument(
-        "--render-graph",
-        action="store_true",
-        help="Render the workflow graph to PNG and exit (no nodes are executed)",
-    )
-    parser.add_argument(
-        "--render-graph-path",
-        type=Path,
-        help="Optional output path for the rendered workflow graph PNG",
-    )
-    parser.add_argument(
-        "--table-cards-dir",
-        type=Path,
-        help="Override path to table cards directory",
-    )
-    parser.add_argument(
         "--schemas",
         nargs="+",
         help="Schema names to load table cards from (e.g., ICSR ICSR_LOOKUP). Defaults to all schemas in table_cards_dir.",
-    )
-    parser.add_argument(
-        "--assumptions-file",
-        type=Path,
-        help="Override path to assumptions catalog YAML file",
     )
     parser.add_argument(
         "--no-persist",
@@ -121,44 +99,18 @@ def main():
     try:
         settings = Settings()
 
-        if args.render_graph:
-            output_path = args.render_graph_path or (
-                settings.paths.output_dir / "graphs" / "main_graph.png"
-            )
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            llm_client = create_llm_client(settings=settings)
-            main_graph = build_main_graph(
-                llm_client,
-                settings,
-                enable_persistence=not args.no_persist,
-            )
-
-            graph = main_graph.get_graph()
-            png_bytes = graph.draw_mermaid_png()
-            output_path.write_bytes(png_bytes)
-
-            logger.info(
-                "Workflow graph rendered to %s (persistence %s)",
-                output_path,
-                "enabled" if not args.no_persist else "disabled",
-            )
-            sys.exit(0)
 
         user_query = args.query
         if not user_query:
             user_query = input("Enter your query: ").strip()
-            #user_query = "count number of female patients in the Netherlands"
         if not user_query:
             logger.error("No query provided")
             sys.exit(1)
 
-        result_state = run_workflow(
-            user_query=user_query,
-            settings=settings,
-            table_cards_path=args.table_cards_dir,
+        runner = WorkflowRunner(settings)
+        result_state = runner.run(
+            query=user_query,
             schemas=args.schemas,
-            assumptions_path=args.assumptions_file,
             enable_persistence=not args.no_persist,
         )
 
@@ -166,15 +118,6 @@ def main():
     except Exception as exc:
         logger.exception("Workflow failed: %s", exc)
         sys.exit(2)
-
-    intent_card = result_state.get("intent_card")
-    if intent_card:
-        logger.info(
-            "Intent Card:\n%s",
-            json.dumps(intent_card.model_dump(), indent=2),
-        )
-    else:
-        logger.info("Intent Card: (not available)")
 
     sql_draft = result_state.get("sql_draft")
     if sql_draft:
