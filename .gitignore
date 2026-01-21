@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
 # add here mypy with a dot beforehand
 
 # Virtual environments
@@ -25,17 +26,26 @@ Thumbs.db       # Windows
 
 # UV
 uv.lock
+.langgraph_api/
 
 # Project-specific folders
 old/
 .ipynb_checkpoints/
 
-# Unstructured notes
-REMINDERS.md
+# artifacts to check later
+nul
 
-# Evaluation reports (may contain sensitive query results)
-evaluation/reports/
+# Generated outputs
+output/
+
+# Other documentation_to_ignore
+other_documentation
+llm_utils_to_check_later
 
 # Temporary files
 *.tmp
 *.log
+*.lock   # File locks from persistence layer
+input/db_exports/
+input/schemas_dir/
+evaluation/reports/

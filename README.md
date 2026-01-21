@@ -1,287 +1,139 @@
-﻿# SQL Query Assistant
+# SQL Query Assistant
 
-> Work in progress: active development 
+> Work in progress: active development
 
-Converts natural language queries to SQL using a LangGraph workflow with validation, repair, execution, and persistence.
+Natural-language to SQL assistant built on a LangGraph workflow. It finds the right tables, drafts SQL, validates/repairs it, executes against SQLite, and can save the run for later inspection.
 
-## Overview
-This tool takes a natural language query and processes it through:
-1. **Table card retriever**: uses RAG to select relevant tables via Azure AI Search (to be configured)
-2. **Interpreter**: selects relevant assumptions and builds an intent card
-3. **SQL drafter**: generates a SQL draft from intent + schema
-4. **SQL validator**: checks SQL validity
-5. **SQL repairer**: retries draft when validation fails (looped up to a limit)
-6. **SQL executor**: runs SQL against the configured database
-7. **Persistence** (optional): saves run artifacts for debugging
+## Prerequisites
 
-### RAG-Based Table Selection
+- Python 3.13+ 
+- Azure OpenAI credentials (endpoint, API key, deployment name)
+- Input data: table card JSONs and SQLite DB files (see [setup/SETUP.md](setup/SETUP.md))
 
-The tool will support intelligent table selection using Azure AI Search. 
-Instead of loading all table cards into the LLM context, the RAG (Retrieval-Augmented Generation) retriever will:
-- Searches indexed table cards using semantic search
-- Selects only the most relevant tables for the query
-- Improves LLM focus on relevant tables
+Optional: AWS Bedrock (alternative LLM), Azure AI Search (RAG retrieval), Langfuse (tracing)
 
-## Input requirements
-- Table cards (JSON files describing database schema)
-  - Organized by schema directory: `input/table_cards/SCHEMA_NAME/*.json`
-- Assumption catalog (YAML file with query assumptions)
-  - Default path: `input/assumptions_catalog/assumptions_catalog.yaml`
+## Quick start
 
-## Installation
+``` 
+# Clone the repository
+git clone <repo-url>
+cd sql_query_assistant
 
-```bash
-pip install -e .
+# Create virtual environment and install dependencies
+
+# Using uv 
+uv venv 
+ 
+# Install from pyproject.toml
+uv pip install -e .
+
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
+
+# Create .env from template
+copy .env.example .env        # Windows
+# cp .env.example .env        # macOS/Linux
+
+# Edit .env with your Azure OpenAI credentials (minimum required):
+#    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+#    AZURE_OPENAI_API_KEY=your-api-key
+#    AZURE_OPENAI_API_VERSION=2024-02-15-preview
+#    AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+
+# Run
+python main.py "Count all cases"
 ```
 
-## Usage
-
-### Basic Usage
-
-```bash
-python main.py "Show me all active users"
-```
-
-### Command-Line Flags
-
-| Flag | Description |
-|------|-------------|
-| `query` | Natural language query to convert to SQL (positional argument) |
-| `--debug` | Enable debug logging |
-| `--render-graph` | Render the workflow graph to a PNG and exit (no execution) |
-| `--render-graph-path PATH` | Optional output path for the rendered workflow graph PNG |
-| `--table-cards-dir PATH` | Override path to table cards directory |
-| `--schemas SCHEMA ...` | Schema names to load table cards from (defaults to all schema subdirs) |
-| `--assumptions-file PATH` | Override path to assumptions catalog YAML file |
-| `--no-persist` | Skip writing outputs to disk |
-
-### Examples
-
-**With debug logging:**
-```bash
-python main.py "Show me all count of female patient cases" --debug
-```
-
-**Custom table cards directory + schemas:**
-```bash
-python main.py "Show me all count of female patient cases" --table-cards-dir ./input/table_cards --schemas ICSR ICSR_LOOKUP
-```
-
-**Render the workflow graph (no execution):**
-```bash
-python main.py --render-graph --render-graph-path ./output/graphs/main_graph.png
-```
-
-**Skip persistence:**
-```bash
-python main.py "Show me all count of female patient cases" --no-persist
-```
-
-**All options combined:**
-```bash
-python main.py "Show me all count of female patient cases" \
-  --debug \
-  --table-cards-dir ./input/table_cards \
-  --schemas ICSR ICSR_LOOKUP \
-  --assumptions-file ./input/assumptions_catalog/assumptions_catalog.yaml \
-  --no-persist
-```
-
-## Workflow
-
-The workflow is built using [LangGraph](https://langchain-ai.github.io/langgraph/) and currently consists of these modules:
-
-```
-User Query -> Interpreter -> SQL Drafter -> SQL Validator -> SQL Repairer (loop) -> SQL Executor -> Persistence (optional)
-```
-
-### 1. Interpreter module
-Analyzes user query and selects relevant assumptions
-
-*Nodes*:
-- `interpret_query`: Analyzes the user query against table metadata and assumption catalog
-- `build_intent_card`: Builds a structured `IntentCard` with task and selected assumptions
-
-*Input*: User query, table cards, assumption catalog
-
-*Output*: Intent card with selected assumptions
-
-### 2. SQL Drafter module
-Generates SQL query based on interpreted intent
-
-*Nodes*:
-- `draft_sql`: Generates SQL using the intent card and table metadata
-
-*Input*: Intent card, table cards
-
-*Output*: SQL draft with rationale and tables used
-
-### 3. SQL Validator module
-Validates the drafted SQL
-
-*Nodes*:
-- `validate_sql`: Validates SQL syntax and compatibility with the target dialect
-
-*Input*: SQL draft
-*Output*: Validation result
+For full setup (Oracle export, Azure Search indexing, etc.), see [setup/SETUP.md](setup/SETUP.md).
 
 
-### 4. SQL Repairer module
-Repairs SQL when validation fails
+## How it works
+- Table cards are retrieved (Azure AI Search RAG when configured, otherwise a token-based fallback with FK expansion).
+- A table selector LLM refines the table list.
+- A drafter LLM produces SQL for the target dialect (default SQLite).
+- A validator checks the SQL; a repair loop retries on failure up to `MAX_REPAIR_ATTEMPTS`.
+- Execution runs in an in-memory SQLite engine with all schema DBs attached.
+- Optional persistence writes CSVs and state dumps for debugging.
 
-*Nodes*:
-- `repair_sql`: Attempts to fix SQL based on validator feedback
+## Repo map (high level)
+- `main.py`: CLI entrypoint.
+- `app.py`: Streamlit UI.
+- `src/sql_query_assistant/config.py`: Settings and env parsing.
+- `src/sql_query_assistant/workflow/`: LangGraph wiring and orchestration.
+- `src/sql_query_assistant/modules/`: Table retrieval, selection, drafting, validation, repair, execution.
+- `src/sql_query_assistant/persistence/`: Writers for CSVs and state dumps.
+- Inputs: `input/table_cards/<SCHEMA>/*.json`, `input/schemas_dir/*.db`.
+- Outputs (if enabled): `output/query_runs.csv`, `output/state_dumps/run_*.json`.
 
-*Input*: SQL draft + validation errors
-*Output*: Repaired SQL draft
-
-### 5. SQL Executor module
-Executes SQL against the configured database
-
-*Nodes*:
-- `execute_sql`: Runs SQL and returns row count or error
-
-*Input*: Valid SQL draft
-*Output*: Query result
-
-### 6. Persistence module (Optional)
-Saves workflow results for debugging and tracking
-
-*Nodes*:
-- `persist_results`: Saves intent card, SQL draft, query result, and full workflow state to disk
-
-*Input*: Complete workflow state
-*Output*: Saved results with run ID
-
-### Workflow state
-
-The workflow maintains a `WorkflowState` that flows through all modules:
-- `user_query`: Original natural language query
-- `table_cards`: Database schema metadata
-- `assumption_catalog`: Available query assumptions and options
-- `selected_assumptions`: Assumptions chosen by interpreter
-- `intent_card`: Structured interpretation of user intent
-- `sql_draft`: Generated SQL query with rationale
-- `validation_result`: Result of SQL validation
-- `query_result`: Execution result (success, row count, errors)
-- `run_id`: Unique identifier for persisted results (if persistence enabled)
-
-## Output
-
-The workflow outputs:
-- **Intent card**: Interpreted query intent with selected assumptions and rationale
-- **SQL draft**: Generated SQL query with explanation of logic and tables used
-- **Query result**: Execution outcome (row count or error)
-
-When persistence is enabled (default), results are saved with a unique run ID for later review.
 
 ## Configuration
 
-- Target SQL dialect: `TARGET_SQL_DIALECT` (default: `sqlite`)
-  - When target is SQLite, Oracle-style column types in table cards are mapped to SQLite.
-- Per-agent model configuration via env vars:
-  - `INTERPRETER_MODEL_PROVIDER`, `INTERPRETER_MODEL_NAME`, `INTERPRETER_TEMPERATURE`
-  - `DRAFTER_MODEL_PROVIDER`, `DRAFTER_MODEL_NAME`, `DRAFTER_TEMPERATURE`
-  - `REPAIRER_MODEL_PROVIDER`, `REPAIRER_MODEL_NAME`, `REPAIRER_TEMPERATURE`
-- Supported providers: Azure OpenAI (default) and AWS Bedrock
+### Required environment variables
 
-## Project Structure
+Create `.env` from `.env.example` and set:
 ```
-sql_query_assistant/
-  main.py
-  src/sql_query_assistant/
-    config.py
-    state.py
-    llm_client.py
-    domain/
-    modules/
-      interpreter/
-      sql_drafter/
-      sql_validator/
-      sql_repairer/
-      sql_executor/
-    persistence/
-    utils/
-    workflow/
-  input/
-    table_cards/
-    assumptions_catalog/
-  output/
-    query_runs.csv
-    query_assumptions.csv
-    state_dumps/
-  tests/
+AZURE_OPENAI_ENDPOINT=your-azure-openai-endpoint
+AZURE_OPENAI_API_KEY=your-azure-openai-api-key
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 ```
 
-## AWS Bedrock Setup (Optional)
-
-This guide helps you configure AWS Bedrock (Claude) for use with the SQL Query Assistant.
-
-### Prerequisites
-
-1. AWS account with access to AWS Bedrock
-2. AWS CLI installed: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
-3. Bedrock model access (request access to Claude models in AWS console)
-
-### Configure SSO
-
-1. Go to your AWS access portal (e.g. https://XYZ.awsapps.com/start/)
-2. Sign in with your account.
-3. Find your AWS IAM Identity Center credentials by going to "DAP-AI-Dev" > "DAP-AI-Dev" > "DAPAIDevUser-PS" > Access keys
-   - SSO start URL
-   - SSO region
-   - AWS_ACCESS_KEY_ID
-   - AWS_SECRET_ACCESS_KEY
-   - AWS_SESSION_TOKEN
-4. In your terminal, run:
-
+RAG for table cards:
 ```
-aws configure sso
+AZURE_SEARCH_ENDPOINT=
+AZURE_SEARCH_ADMIN_KEY=
+AZURE_SEARCH_QUERY_KEY=
+AZURE_SEARCH_TABLE_CARDS_INDEX=your_table_cards_index
+AZURE_SEARCH_TOP_K=50
+TABLE_CARD_CORE_COUNT=10
+FK_EXPANSION_ENABLED=true
+FK_EXPANSION_SOURCE_COUNT=3
+FK_EXPANSION_MAX_TOTAL=25
+FK_EXPANSION_INCLUDE_REVERSE=false
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small
+AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536
+HYBRID_SEARCH_ENABLED=true
 ```
 
-5. Create a session name, provide your IAM Identity Center start URL or issuer URL, the AWS Region that hosts the IAM Identity Center directory, and the registration scope:
-
+Optional (provider overrides per agent), for example:
 ```
-SSO session name (Recommended): AWS EMA
-SSO start URL [None]: https://d-996712cf4e.awsapps.com/start/#
-SSO region [None]: eu-central-1
-SSO registration scopes [sso:account:access]: -- press Enter and click the link in incognito
+DRAFTER_MODEL_PROVIDER=azure|aws
+DRAFTER_MODEL_NAME=specific-model-name
+DRAFTER_TEMPERATURE=0.0
 ```
 
-6. In your `.env` file, set:
-
-```bash
-AWS_BEDROCK_REGION="eu-central-1"
-AWS_PROFILE="your-profile-name"
+Optional (other knobs):
+```
+TARGET_SQL_DIALECT=sqlite
+MAX_REPAIR_ATTEMPTS=3
+TABLE_SELECTOR_CORE_TABLES=["example_table1", "example_table2"]
+TABLE_SELECTOR_NOISE_VALUE_MAPS= ["example_table2", "example_table3"]
+LANGFUSE_*=...
+AWS_BEDROCK_REGION=...   # plus AWS_PROFILE if using Bedrock
 ```
 
-### Login to SSO
+### Run from CLI
+- Basic: `python main.py "Show me all female patient cases"`
+- With debug logs: `python main.py "Show me all female patient cases" --debug`
+- Limit schemas / override table cards dir:  
+  `python main.py "query" --table-cards-dir ./input/table_cards --schemas ICSR ICSR_LOOKUP`
+- Skip persistence: `python main.py "query" --no-persist`
 
+### Run the Streamlit UI
+``` 
+streamlit run app.py
 ```
-aws sso login --profile <profile name>
-```
+View generated SQL, execution metrics, sample rows, workflow graphs, input table cards, and prior run state dumps.
 
-Replace `<profile name>` with your profile name. Click the link (in incognito) and login.
+### Inputs
+- Table cards: `input/table_cards/<SCHEMA>/*.json` (include FK metadata for relationship expansion).
+- Schemas for execution: `input/schemas_dir/*.db` (filename stem is the schema name). To create the .db check `SETUP.md` in the `setup/` folder.
 
-### Configure Agents to use AWS
+### Outputs (when persistence is enabled)
+- `output/query_runs.csv`: Summary per run
+- `output/state_dumps/run_*.json`: Full workflow state for replay/debugging
 
-In your `.env` file, configure which agents should use AWS Claude:
-
-```bash
-# Example: Use AWS Claude for the drafter agent
-DRAFTER_MODEL_PROVIDER="aws"
-DRAFTER_MODEL_NAME="anthropic.claude-3-5-sonnet-20241022-v2:0"
-DRAFTER_TEMPERATURE="0.0"
-```
-
-### Choosing Claude models
-Available Claude models:
-- `anthropic.claude-3-5-sonnet-20241022-v2:0` - latest Sonnet (recommended)
-- `anthropic.claude-3-5-sonnet-20240620-v1:0` - previous Sonnet
-- `anthropic.claude-3-haiku-20240307-v1:0` - haiku (faster, cheaper)
-- `anthropic.claude-3-opus-20240229-v1:0` - opus (most capable)
-
-To list all available models:
-```
-aws bedrock list-foundation-models --region eu-central-1 --profile <your_profile_name>
-```
+### Behavior notes
+- Oracle-style column types in table cards are mapped to SQLite affinities when `TARGET_SQL_DIALECT=sqlite`
+- Execution currently attaches all schema DBs into one in-memory SQLite connection. This will change in the future to connect directly to external DBs.
+- The repair loop stops after `MAX_REPAIR_ATTEMPTS`; if validation still fails, execution is skipped and an error is returned.

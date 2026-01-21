@@ -1,10 +1,18 @@
+import os
+
+from pathlib import Path
+from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.core.exceptions import HttpResponseError
 
-ENDPOINT = ""
-QUERY_KEY = ""
-INDEX_NAME = ""
+# Load environment variables from project root .env
+project_root = Path(__file__).resolve().parents[2]
+load_dotenv(project_root / ".env", override=True)
+
+ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
+QUERY_KEY = os.getenv("AZURE_SEARCH_QUERY_KEY", "")
+INDEX_NAME = os.getenv("AZURE_SEARCH_INDEX_NAME", "")
 
 def test_connection():
     print(f"Testing connection to: {ENDPOINT}...")

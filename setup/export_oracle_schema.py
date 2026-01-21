@@ -5,18 +5,32 @@ import argparse
 
 import pandas as pd
 
+from pathlib import Path
+from dotenv import load_dotenv
 from typing import Any, Optional
 from datetime import datetime, timezone
 
+# Load environment variables from project root .env
+# override=True ensures .env values take precedence over system env vars
+project_root = Path(__file__).resolve().parents[1]
+load_dotenv(project_root / ".env", override=True)
+
 # Oracle configuration
-DB_HOST = ''
-DB_PORT = 1571
-DB_SERVICE = ''
-DB_USER = ''
-DB_PASSWORD = ''
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = int(os.getenv("DB_PORT", "1521"))
+DB_SERVICE = os.getenv("DB_SERVICE")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+# Validate required DB credentials are set
+if not all([DB_HOST, DB_SERVICE, DB_USER, DB_PASSWORD]):
+    raise ValueError(
+        "Missing required database credentials in .env file. "
+        "Please set DB_HOST, DB_PORT, DB_SERVICE, DB_USER, and DB_PASSWORD"
+    )
 
 # Target schema to export
-TARGET_SCHEMA = 'ICSR_LOOKUP'
+TARGET_SCHEMA = 'ICSR_EMA'
 BASE_OUTPUT_DIRECTORY = '../input/db_exports'
 
 # Export constants

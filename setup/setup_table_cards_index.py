@@ -1,5 +1,14 @@
+import os
 import logging
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env before any settings are accessed
+project_root = Path(__file__).resolve().parents[1]
+load_dotenv(project_root / ".env", override=True)
+
+from openai import AzureOpenAI
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents import SearchClient
@@ -19,7 +28,6 @@ from azure.search.documents.indexes.models import (
     VectorSearch,
     VectorSearchProfile,
 )
-from openai import AzureOpenAI
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.utils.loaders import load_table_cards
@@ -483,18 +491,21 @@ def main():
     """Main entry point for index setup."""
     settings = Settings()
 
+    admin_key = os.getenv("AZURE_SEARCH_ADMIN_KEY")
+    if not admin_key:
+        logger.error("AZURE_SEARCH_ADMIN_KEY environment variable is required for setup")
+        return
+
     if not settings.azure_search:
         logger.error(
             "Azure AI Search is not configured. Please set the following environment variables:\n"
             "  - AZURE_SEARCH_ENDPOINT\n"
-            "  - AZURE_SEARCH_ADMIN_KEY\n"
             "  - AZURE_SEARCH_QUERY_KEY\n"
             "  - AZURE_SEARCH_TABLE_CARDS_INDEX (optional, defaults to 'sql_assistant_table_cards_index')"
         )
         return
 
     endpoint = str(settings.azure_search.endpoint)
-    admin_key = settings.azure_search.admin_key
     index_name = settings.azure_search.table_cards_index_name
 
     embedding_dimensions = settings.azure_search.embedding_dimensions
@@ -514,11 +525,9 @@ def main():
     # Index the table cards with embeddings
     index_table_cards(endpoint, admin_key, index_name, settings)
 
-    logger.info("\n" + "="*60)
-    logger.info("    Index setup complete!")
+    logger.info("Index setup complete:")
     logger.info(f"   Index: {index_name}")
     logger.info(f"   Endpoint: {endpoint}")
-    logger.info("="*60)
 
 
 if __name__ == "__main__":

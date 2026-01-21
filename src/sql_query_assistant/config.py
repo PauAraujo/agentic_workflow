@@ -135,11 +135,6 @@ class AzureSearchSettings(EnvBaseSettings):
         validation_alias="AZURE_SEARCH_ENDPOINT",
         description="Azure AI Search endpoint URL"
     )
-    admin_key: str | None = Field(
-        validation_alias="AZURE_SEARCH_ADMIN_KEY",
-        description="Azure AI Search admin key for indexing (only needed for setup scripts)",
-        default=None,
-    )
     query_key: str = Field(
         validation_alias="AZURE_SEARCH_QUERY_KEY",
         description="Azure AI Search query key for searching",
@@ -348,7 +343,7 @@ class Settings(EnvBaseSettings):
             try:
                 self.langfuse = LangfuseSettings()
             except ValidationError:
-                self.langfuse = None # TODO: add logging when Langfuse is disabled due to config issues
+                self.langfuse = None
 
         # Load AWS if available
         if self.aws is None:
