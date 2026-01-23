@@ -1,0 +1,76 @@
+{
+  "table_metadata": {
+    "qualified_name": "ICSR_EMA.CASE_REPORT_CLUSTER",
+    "schema_name": "ICSR_EMA",
+    "name": "CASE_REPORT_CLUSTER",
+    "primary_key": [
+      "MEMBER_CASE_REPORT_ID"
+    ],
+    "row_count": 12553473
+  },
+  "columns": [
+    {
+      "name": "MASTER_CASE_REPORT_ID",
+      "type": "NUMBER",
+      "nullable": false,
+      "fk": "ICSR.CASE_REPORT.CASE_REPORT_ID"
+    },
+    {
+      "name": "MASTER_IS_NULLIFIED",
+      "type": "NUMBER",
+      "nullable": false
+    },
+    {
+      "name": "MEMBER_CASE_REPORT_ID",
+      "type": "NUMBER",
+      "nullable": false,
+      "fk": "ICSR.CASE_REPORT.CASE_REPORT_ID"
+    },
+    {
+      "name": "MEMBER_IS_NULLIFIED",
+      "type": "NUMBER",
+      "nullable": false
+    },
+    {
+      "name": "MASTER_IS_REAL",
+      "type": "NUMBER",
+      "nullable": true
+    },
+    {
+      "name": "CHANGE_SESSION_ID",
+      "type": "VARCHAR2(20)",
+      "nullable": true
+    },
+    {
+      "name": "CLUSTER_ID",
+      "type": "NUMBER",
+      "nullable": false,
+      "fk": "ICSR_EMA.DD_CLUSTER.CLUSTER_ID"
+    },
+    {
+      "name": "CREATED_BY",
+      "type": "VARCHAR2(60)",
+      "nullable": true
+    },
+    {
+      "name": "CREATED_ON",
+      "type": "TIMESTAMP(6)",
+      "nullable": true
+    },
+    {
+      "name": "UPDATED_BY",
+      "type": "VARCHAR2(60)",
+      "nullable": true
+    },
+    {
+      "name": "UPDATED_ON",
+      "type": "TIMESTAMP(6)",
+      "nullable": true
+    },
+    {
+      "name": "IS_MASTER_ROW",
+      "type": "NUMBER(38,0)",
+      "nullable": true
+    }
+  ]
+}

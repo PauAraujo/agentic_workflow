@@ -1,0 +1,67 @@
+{
+  "table_metadata": {
+    "qualified_name": "ICSR_LOOKUP.COUNTRY",
+    "schema_name": "ICSR_LOOKUP",
+    "name": "COUNTRY",
+    "primary_key": [
+      "COUNTRY_ID"
+    ],
+    "row_count": 259
+  },
+  "columns": [
+    {
+      "name": "COUNTRY_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": false,
+      "description": "Primary key."
+    },
+    {
+      "name": "NAME",
+      "type": "VARCHAR2(250)",
+      "nullable": true,
+      "description": "Referential name/description."
+    },
+    {
+      "name": "R2_CODE",
+      "type": "VARCHAR2(2)",
+      "nullable": true,
+      "description": "Transmission code as it was in ICSR R2."
+    },
+    {
+      "name": "R3_CODE",
+      "type": "VARCHAR2(2)",
+      "nullable": true,
+      "description": "Transmission code in ICSR R3."
+    },
+    {
+      "name": "RMS_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Reference to identifier in Referential Management System (RMS)."
+    },
+    {
+      "name": "RMS_REVISION",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Revision number as assigned by Referential Management System (RMS)."
+    },
+    {
+      "name": "IS_DEPRECATED",
+      "type": "NUMBER(1,0)",
+      "nullable": true,
+      "description": "Boolean flag to describe whether the term has been deprecated or not. This is required in some cases when term has not yet the end date but has been deprecated."
+    },
+    {
+      "name": "START_DATE",
+      "type": "DATE",
+      "nullable": true,
+      "description": "Start date"
+    },
+    {
+      "name": "END_DATE",
+      "type": "DATE",
+      "nullable": true,
+      "description": "End date"
+    }
+  ]
+}
