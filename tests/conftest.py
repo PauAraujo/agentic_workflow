@@ -5,7 +5,8 @@ from sql_query_assistant.domain import (
     TableCard,
     TableMetadata,
     Column,
-    SQLDraft
+    SQLDraft,
+    TableCardWithSelection,
 )
 
 class DummyLLMClient:
@@ -116,7 +117,17 @@ def sample_raw_table_card_dict():
 
 
 @pytest.fixture
-def complete_workflow_state(sample_table_card):
+def sample_selected_table_card(sample_table_card):
+    """Returns a sample TableCardWithSelection wrapping the sample_table_card."""
+    return TableCardWithSelection(
+        table_card=sample_table_card,
+        selection_reason="Contains patient demographics needed for query",
+        key_columns=["SAFETY_REPORT_ID", "PATIENT_SEX_ID"],
+    )
+
+
+@pytest.fixture
+def complete_workflow_state(sample_table_card, sample_selected_table_card):
     """
     Returns a complete WorkflowState with all fields populated.
 
@@ -133,6 +144,7 @@ def complete_workflow_state(sample_table_card):
     return {
         "user_query": "Show me all patients",
         "table_cards": [sample_table_card],
+        "table_cards_with_selection": [sample_selected_table_card],
         "sql_draft": sql_draft,
     }
 

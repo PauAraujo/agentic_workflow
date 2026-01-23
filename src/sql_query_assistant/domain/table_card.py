@@ -1,10 +1,3 @@
-"""
-Table card domain models for representing database schema information.
-
-Optimized structure with:
-- Compact FK notation ("SCHEMA.TABLE.COLUMN") at column level
-- Deduplicated value_maps at table level, referenced by columns via value_map_ref
-"""
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,7 +62,13 @@ class Column(BaseModel):
 
 
 class TableCard(BaseModel):
-    """Structured representation of a table card JSON file."""
+    """
+    Immutable table schema metadata loaded from JSON files.
+
+    Represents the complete structure of a database table including columns,
+    foreign keys, value maps, and metadata. This is the foundational input
+    model that flows through the entire pipeline.
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -78,39 +77,39 @@ class TableCard(BaseModel):
     special_handling: dict[str, str] | None = None
 
     # Deduplicated value_maps at table level
-    # Each value_map contains:
-    #   - "_count": int (total values in lookup table)
-    #   - "_value_column": str (column name for text search, only for sampled maps)
-    #   - key->value string mappings
+    # The presence/absence of _value_column signals completeness:
+    #   - _value_column ABSENT: all lookup values embedded (≤500 rows), use IDs directly
+    #   - _value_column PRESENT: sampled (>500 rows), JOIN on that column if value not found
+    # All maps include "_count" (total values in lookup table)
     value_maps: dict[str, dict[str, str | int]] | None = Field(
         default=None,
         description="Lookup table value mappings with metadata, keyed by table name"
     )
 
-    def get_value_map(self, column: Column) -> dict[str, str | int] | None:
-        """
-        Get the value map for a column (includes metadata fields).
 
-        Args:
-            column: Column to get value map for
+class TableCardWithSelection(BaseModel):
+    """
+    TableCard enriched with selection context from the Table Selector.
 
-        Returns:
-            Value map dict (with _count, optionally _value_column) or None
-        """
-        if column.value_map_ref and self.value_maps:
-            return self.value_maps.get(column.value_map_ref)
-        return None
+    This model combines the full table schema (TableCard) with metadata about
+    why and how the table was selected for the query. This enables:
+    - User transparency (showing why tables were chosen)
+    - Debugging and auditability
+    - Preserving LLM reasoning without cluttering downstream prompts
 
-    def get_value_map_count(self, column: Column) -> int | None:
-        """Get the total count of values in a lookup table."""
-        vmap = self.get_value_map(column)
-        if vmap:
-            return vmap.get("_count")
-        return None
+    The table_card contains immutable schema metadata (columns, FKs, descriptions).
+    The selection metadata (reason, key_columns) captures the LLM's decision context.
+    """
 
-    def get_value_map_search_column(self, column: Column) -> str | None:
-        """Get the column name to use for text search in large lookup tables."""
-        vmap = self.get_value_map(column)
-        if vmap:
-            return vmap.get("_value_column")
-        return None
+    table_card: TableCard = Field(
+        ...,
+        description="The full table card with schema metadata"
+    )
+    selection_reason: str = Field(
+        ...,
+        description="Why the Table Selector determined this table is needed for the query"
+    )
+    key_columns: list[str] = Field(
+        default_factory=list,
+        description="Columns identified as relevant to the query"
+    )

@@ -20,10 +20,10 @@ Your job is to convert a natural language query into a valid SQL statement using
    - Follow FK chains to connect related tables
 
 4. USE VALUE_MAPS FOR FILTERING
-   - Table-level "value_maps" contains lookup values (e.g., "COUNTRY": {{"1": "Andorra", ...}})
-   - Column "value_map_ref" indicates which value_map applies to that column
+   - Column "value_map_ref" points to lookup data in table-level "value_maps"
    - "_count" shows total values in the lookup table
-   - If "_value_column" is present, the value_map is a sample - use JOIN to search by that column
+   - If "_value_column" is ABSENT: all values are shown - use the ID directly
+   - If "_value_column" is PRESENT: only samples shown - JOIN on that column if your value isn't listed
 
 5. SQL STYLE
    - Produce clean, readable SQL in the specified dialect

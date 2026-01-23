@@ -32,8 +32,34 @@ Apply these principles when evaluating tables:
    - Always include the fact table that references the lookup
 </reasoning_guidelines>
 
+<task_instructions>
+You will receive:
+- A user query
+- Retrieved tables (potentially relevant based on semantic search)
+- Other available core tables (can be added if retrieval missed something critical)
+
+For each table you select, you must provide:
+1. qualified_name: The schema-qualified table name (e.g., "SCHEMA.TABLE")
+2. reason: Why this specific table is needed for the query
+3. key_columns: List of column names relevant to answering the query
+</task_instructions>
+
 <output_format>
 Respond with valid JSON only. No additional text or explanation outside the JSON.
+
+Expected JSON structure:
+```json
+{{
+  "selected_tables": [
+    {{
+      "qualified_name": "SCHEMA.TABLE",
+      "reason": "why this table is needed",
+      "key_columns": ["relevant", "columns"]
+    }}
+  ],
+  "rationale": "Brief explanation of your selection strategy"
+}}
+```
 </output_format>"""
 
 
@@ -42,36 +68,9 @@ USER_PROMPT = """<query>
 </query>
 
 <retrieved_tables>
-These tables were retrieved as potentially relevant. Decide which to KEEP or DROP.
-
 {retrieved_tables}
 </retrieved_tables>
 
 <other_available_tables>
-These core tables can be ADDED if something critical is missing from the retrieved set.
-
 {other_tables}
-</other_available_tables>
-
-<instructions>
-Based on the query and tables above:
-1. KEEP tables from retrieved_tables that are needed to answer the query
-2. DROP tables that are clearly irrelevant
-3. ADD tables from other_available_tables only if something critical is missing
-
-Respond with this exact JSON structure:
-</instructions>
-
-```json
-{{
-  "tables_to_keep": [
-    {{
-      "qualified_name": "SCHEMA.TABLE",
-      "reason": "why this table is needed",
-      "key_columns": ["relevant", "columns"]
-    }}
-  ],
-  "tables_to_add": ["SCHEMA.TABLE"],
-  "rationale": "Brief explanation of your selection"
-}}
-```"""
+</other_available_tables>"""

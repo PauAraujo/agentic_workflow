@@ -119,7 +119,9 @@ def test_save_full_state_json_creates_valid_json(dummy_settings, complete_workfl
 
     # Verify structure
     assert data["user_query"] == "Show me all patients"
-    assert isinstance(data["table_cards"], list)
+    assert isinstance(data["table_cards_with_selection"], list)
+    assert len(data["table_cards_with_selection"]) == 1
+    assert data["table_cards_with_selection"][0]["selection_reason"] == "Contains patient demographics needed for query"
     assert isinstance(data["sql_draft"], dict)
     assert data["sql_draft"]["sql"] == "SELECT * FROM ICSR.PATIENT"
 

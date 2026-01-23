@@ -2,6 +2,7 @@ from typing import cast
 
 from tests.conftest import DummyLLMClient
 from sql_query_assistant.llm_client import LLMClient
+from sql_query_assistant.domain import TableCardWithSelection
 from sql_query_assistant.modules.sql_drafter.models import RawSQLDraftResponse
 from sql_query_assistant.modules.sql_drafter.nodes import draft_sql
 
@@ -18,9 +19,18 @@ def _make_sql_drafter_client(sql, rationale, tables_used):
 
 def _make_drafter_state(user_query, table_cards):
     """Build a standard workflow state dict for SQL drafter tests."""
+    cards = table_cards if isinstance(table_cards, list) else [table_cards]
+    selected_cards = [
+        TableCardWithSelection(
+            table_card=card,
+            selection_reason="Test fixture",
+            key_columns=[],
+        )
+        for card in cards
+    ]
     return {
         "user_query": user_query,
-        "table_cards": table_cards if isinstance(table_cards, list) else [table_cards],
+        "table_cards_with_selection": selected_cards,
     }
 
 

@@ -129,7 +129,8 @@ View generated SQL, execution metrics, sample rows, workflow graphs, input table
 - Table cards: `input/table_cards/<SCHEMA>/*.json` (include FK metadata for relationship expansion).
 - Schemas for execution: `input/schemas_dir/*.db` (filename stem is the schema name). To create the .db check `SETUP.md` in the `setup/` folder.
 
-### Outputs (when persistence is enabled)
+### Outputs 
+When persistence is enabled:
 - `output/query_runs.csv`: Summary per run
 - `output/state_dumps/run_*.json`: Full workflow state for replay/debugging
 
@@ -137,3 +138,10 @@ View generated SQL, execution metrics, sample rows, workflow graphs, input table
 - Oracle-style column types in table cards are mapped to SQLite affinities when `TARGET_SQL_DIALECT=sqlite`
 - Execution currently attaches all schema DBs into one in-memory SQLite connection. This will change in the future to connect directly to external DBs.
 - The repair loop stops after `MAX_REPAIR_ATTEMPTS`; if validation still fails, execution is skipped and an error is returned.
+
+### Troubleshooting
+- Ensure all required environment variables are set in `.env`.
+- Check that input table cards and schema DBs are in the correct directories.
+- Enable debug logs with `--debug` for more detailed output.
+- Review state dumps in `output/state_dumps/` for debugging failed runs.
+- Consult the `setup/SETUP.md` for detailed setup instructions.

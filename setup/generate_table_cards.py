@@ -47,9 +47,10 @@ CSV_EXTENSION = ".csv"
 UTF8_ENCODING = "utf-8"
 
 # Value map thresholds
-# ≤500 rows: embed full map (covers COUNTRY=259, most reference tables)
-# >500 rows: 20 samples + _value_column for JOIN guidance
-# Rationale: Full value maps enable value-based retrieval (e.g., "Netherlands" -> COUNTRY)
+# The presence/absence of _value_column serves as a semantic signal:
+#   - _value_column ABSENT: all lookup values are embedded, use IDs directly
+#   - _value_column PRESENT: only samples shown, JOIN on that column if value not found
+# Threshold set to 500 to cover user-facing lookups (countries=259, outcomes, etc.)
 FULL_EMBED_THRESHOLD = 500
 SAMPLE_SIZE = 20
 
@@ -216,12 +217,6 @@ def parse_args():
         help="Output directory for table cards (defaults to input/table_cards).",
     )
     parser.add_argument(
-        "--value-map-threshold",
-        type=int,
-        default=FULL_EMBED_THRESHOLD,
-        help=f"Max rows for lookup tables to embed full value_map (default: {FULL_EMBED_THRESHOLD}).",
-    )
-    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing table cards.",
@@ -332,28 +327,29 @@ def load_value_map_with_metadata(
     csv_path: Path,
     key_column: str,
     value_column: str,
-    threshold: int,
     row_count: int,
 ) -> dict[str, Any]:
     """
     Load a value map from a CSV file with metadata.
 
-    Strategy:
-    - ≤threshold: full map + _count
-    - >threshold: SAMPLE_SIZE samples + _count + _value_column
+    The presence/absence of _value_column serves as a semantic signal to the LLM:
+    - ≤FULL_EMBED_THRESHOLD: all values embedded, _count only (no _value_column)
+    - >FULL_EMBED_THRESHOLD: SAMPLE_SIZE samples + _count + _value_column
+
+    When _value_column is absent, the LLM knows all values are present and can
+    use IDs directly. When present, it signals that a JOIN may be needed.
 
     Args:
         csv_path: Path to the CSV file
         key_column: Column name for keys
         value_column: Column name for values
-        threshold: Max rows for full embed
         row_count: Total row count from metadata (required)
 
     Returns:
-        Dictionary with value mappings and metadata (_count, optionally _value_column).
+        Dictionary with value mappings and metadata.
     """
-    if row_count <= threshold:
-        # Full embed - load all values
+    if row_count <= FULL_EMBED_THRESHOLD:
+        # Full embed - all values, _count only (no _value_column signals completeness)
         value_map: dict[str, Any] = {"_count": row_count}
         with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
             reader = csv.DictReader(handle)
@@ -367,7 +363,7 @@ def load_value_map_with_metadata(
                 value_map[str(key_value)] = str(value)
         return value_map
     else:
-        # Partial sample - include _value_column for JOIN guidance
+        # Sampled - _value_column present signals incompleteness
         value_map = {
             "_count": row_count,
             "_value_column": value_column,
@@ -442,7 +438,6 @@ def generate_table_cards(
     metadata: dict[str, Any],
     exports_dir: Path,
     cards_dir: Path,
-    threshold: int,
     overwrite: bool,
     filter_tables: bool = True,
     lookup_metadata: Optional[dict[str, Any]] = None,
@@ -555,7 +550,7 @@ def generate_table_cards(
                                 row_count = get_table_row_count(lookup_tables, ref_table)
                                 if csv_path.exists() and row_count is not None:
                                     value_map = load_value_map_with_metadata(
-                                        csv_path, key_col, value_col, threshold, row_count
+                                        csv_path, key_col, value_col, row_count
                                     )
                                     if value_map:
                                         table_value_maps[ref_table] = value_map
@@ -645,7 +640,6 @@ def main():
             metadata,
             exports_dir,
             schema_cards_dir,
-            threshold=args.value_map_threshold,
             overwrite=args.overwrite,
             filter_tables=not args.include_all,
             lookup_metadata=current_lookup_metadata,

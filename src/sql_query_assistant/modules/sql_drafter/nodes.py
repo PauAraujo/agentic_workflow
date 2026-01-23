@@ -22,7 +22,7 @@ def draft_sql(
     Draft a SQL query using the user query and available table metadata.
 
     Args:
-        state: Current state containing user_query and table_cards.
+        state: Current state containing user_query and table_cards_with_selection.
         client: LLMClient instance for LLM calls.
         model_config: Model configuration specifying provider, model, and temperature.
         target_dialect: Target SQL dialect for query generation (e.g., 'sqlite', 'postgres').
@@ -33,11 +33,17 @@ def draft_sql(
     logger.info("Drafting SQL query (target dialect: %s)", target_dialect)
     prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
 
+    # Extract TableCards from TableCardWithSelection wrappers
+    # The selection metadata (reason, key_columns) is preserved in state for auditability
+    # but we only pass the TableCard content to the LLM prompt
+    table_cards_with_selection = state.get("table_cards_with_selection", [])
+    table_cards = [tc.table_card for tc in table_cards_with_selection]
+
     prompt_messages = prompt_template.format_messages(
         target_dialect=target_dialect,
         user_query=state["user_query"],
         table_cards=json.dumps(
-            [card.model_dump() for card in state["table_cards"]],
+            [card.model_dump() for card in table_cards],
             indent=2,
         ),
     )

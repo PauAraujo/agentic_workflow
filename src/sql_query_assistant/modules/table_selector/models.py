@@ -1,9 +1,12 @@
 from pydantic import BaseModel, Field
 
 
-class SelectedTable(BaseModel):
+class TableSelectionDecision(BaseModel):
     """
-    A table selected by the LLM as relevant to the query.
+    Represents the LLM's decision to select a table for the query.
+
+    This is a lightweight record of which table was chosen and why.
+    The full table schema (TableCard) is looked up separately.
     """
 
     qualified_name: str = Field(
@@ -16,7 +19,7 @@ class SelectedTable(BaseModel):
     )
     key_columns: list[str] = Field(
         default_factory=list,
-        description="Columns from this table relevant to the query"
+        description="Columns from this table relevant to the query (may be empty if used only for JOINs)"
     )
 
 
@@ -25,15 +28,11 @@ class TableSelectionResponse(BaseModel):
     Complete response from the table selection LLM call.
     """
 
-    tables_to_keep: list[SelectedTable] = Field(
+    selected_tables: list[TableSelectionDecision] = Field(
         ...,
-        description="Tables from retrieved set that are needed"
-    )
-    tables_to_add: list[str] = Field(
-        default_factory=list,
-        description="Qualified names of additional tables to add from core tables"
+        description="All tables selected as needed for the query"
     )
     rationale: str = Field(
         ...,
-        description="Brief explanation of the table selection decision"
+        description="Brief explanation of the table selection strategy"
     )

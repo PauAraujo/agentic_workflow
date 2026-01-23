@@ -1,6 +1,6 @@
 import pytest
 
-from sql_query_assistant.domain.input.table_card import Column, TableCard, TableMetadata
+from sql_query_assistant.domain.table_card import Column, TableCard, TableMetadata
 from sql_query_assistant.utils import (
     map_oracle_type_to_sqlite,
     transform_column_type,

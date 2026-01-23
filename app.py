@@ -144,8 +144,8 @@ def main():
                         for step_node, step_desc in all_steps:
                             if step_node in completed_nodes:
                                 detail = ""
-                                if step_node == "table_selector" and accumulated_state.get("table_cards"):
-                                    detail = f" ({len(accumulated_state['table_cards'])} tables)"
+                                if step_node == "table_selector" and accumulated_state.get("table_cards_with_selection"):
+                                    detail = f" ({len(accumulated_state['table_cards_with_selection'])} tables)"
                                 elif step_node == "sql_validator" and accumulated_state.get("validation_result"):
                                     vr = accumulated_state["validation_result"]
                                     detail = " ✓" if vr.is_valid else " (needs repair)"
@@ -172,8 +172,8 @@ def main():
                     for step_node, step_desc in all_steps:
                         if step_node in completed_nodes:
                             detail = ""
-                            if step_node == "table_selector" and accumulated_state.get("table_cards"):
-                                detail = f" ({len(accumulated_state['table_cards'])} tables)"
+                            if step_node == "table_selector" and accumulated_state.get("table_cards_with_selection"):
+                                detail = f" ({len(accumulated_state['table_cards_with_selection'])} tables)"
                             elif step_node == "sql_validator" and accumulated_state.get("validation_result"):
                                 vr = accumulated_state["validation_result"]
                                 detail = " ✓" if vr.is_valid else " (needs repair)"

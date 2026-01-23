@@ -1,0 +1,288 @@
+{
+  "table_metadata": {
+    "qualified_name": "ICSR.PATIENT",
+    "schema_name": "ICSR",
+    "name": "PATIENT",
+    "primary_key": [
+      "SAFETY_REPORT_ID"
+    ],
+    "row_count": 32266983
+  },
+  "columns": [
+    {
+      "name": "SAFETY_REPORT_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": false,
+      "description": "Foreign key from SAFETY_REPORT.",
+      "fk": "ICSR.SAFETY_REPORT.SAFETY_REPORT_ID"
+    },
+    {
+      "name": "INITIALS",
+      "type": "VARCHAR2(60)",
+      "nullable": true,
+      "description": "Patient name initials.\n\nIt is important that this data element is populated. The identification of the patient might be prohibited by certain national confidentiality laws or directives. The information should be provided when it is in conformance with the confidentiality requirements.\n\nFree text\nnullFlavor: MSK\n\n[D.1]\n\nR2: D.1"
+    },
+    {
+      "name": "INITIALS_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "MEDICAL_REC_NUMBER",
+      "type": "VARCHAR2(20)",
+      "nullable": true,
+      "description": "Patient medical record number(s) and source(s) of the record number. GP record number [D.1.1.1].\n\nFree text\nnullFlavor: MSK\n\nR2: B.1.1.1a"
+    },
+    {
+      "name": "MEDICAL_REC_NUMBER_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "SPECIALIST_REC_NUMBER",
+      "type": "VARCHAR2(20)",
+      "nullable": true,
+      "description": "Patient medical record number(s) and source(s) of the record number. Specialist record number [D.1.1.2].\n\nFree text\nnullFlavor: MSK\n\nR2: B.1.1.1b"
+    },
+    {
+      "name": "SPECIALIST_REC_NUMBER_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "HOSPITAL_REC_NUMBER",
+      "type": "VARCHAR2(20)",
+      "nullable": true,
+      "description": "Patient medical record number(s) and source(s) of the record number. Hospital record number [D.1.1.3].\n\nFree text\nnullFlavor: MSK\n\nR2: B.1.1.1c"
+    },
+    {
+      "name": "HOSPITAL_REC_NUMBER_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "INVESTIGATION_NUMBER",
+      "type": "VARCHAR2(20)",
+      "nullable": true,
+      "description": "Patient medical record number(s) and source(s) of the record number. Investigation number [D.1.1.4].\n\nFree text\nnullFlavor: MSK\n\nR2: B.1.1.1d"
+    },
+    {
+      "name": "INVESTIGATION_NUMBER_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "BIRTH_DATE_PRC_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Format Id for birth date",
+      "fk": "ICSR_LOOKUP.DATE_PRECISION.DATE_PRECISION_ID",
+      "value_map_ref": "DATE_PRECISION"
+    },
+    {
+      "name": "BIRTH_DATE",
+      "type": "DATE",
+      "nullable": true,
+      "description": "Patient birth date [D.2.1].\n\nnullFlavor: MSK\n\nR2: B.1.2.1b\n"
+    },
+    {
+      "name": "BIRTH_DATE_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 4 (MSK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "ONSET_AGE",
+      "type": "NUMBER",
+      "nullable": true,
+      "description": "Age at time of onset of reaction/event. [D.2.2a]\n\nR2: B.1.2.2a"
+    },
+    {
+      "name": "ONSET_AGE_TI_UNIT_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Foreign key from TIME_INTERVAL.",
+      "fk": "ICSR_LOOKUP.TIME_INTERVAL.TIME_INTERVAL_ID",
+      "value_map_ref": "TIME_INTERVAL"
+    },
+    {
+      "name": "GESTATION_PERIOD",
+      "type": "NUMBER",
+      "nullable": true,
+      "description": "Gestation period when reaction/event was observed in the fetus. [D.2.2.1a]\n\nR2: B.1.2.2.1a"
+    },
+    {
+      "name": "GESTATIONAL_PERIOD_TI_UNIT_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "UCUM\n\nYear, Month, Week, Day, Hour and {Trimester}\n\n[D.2.2.1b]\n\nR2: B.1.2.2.1b",
+      "fk": "ICSR_LOOKUP.TIME_INTERVAL.TIME_INTERVAL_ID",
+      "value_map_ref": "TIME_INTERVAL"
+    },
+    {
+      "name": "PATIENT_AGE_GROUP_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Age group of the patient. Value must be one of the following:\n\n0=Foetus\n1=Neonate (Preterm and Term newborns)\n2=Infant\n3=Child\n4=Adolescent\n5=Adult\n6=Elderly\n\n[D.2.3]\n\nR2: 1.2.3",
+      "fk": "ICSR_LOOKUP.PATIENT_AGE_GROUP.PATIENT_AGE_GROUP_ID",
+      "value_map_ref": "PATIENT_AGE_GROUP"
+    },
+    {
+      "name": "WEIGHT",
+      "type": "NUMBER",
+      "nullable": true,
+      "description": "Patient weight in kg. [D.3]\n\nAs IG states weight in kilograms, so no additional units are needed.\n\nR2: B.1.3"
+    },
+    {
+      "name": "HEIGHT",
+      "type": "NUMBER",
+      "nullable": true,
+      "description": "Patient height in cm. [D.4]\n\nAs IG states units in centimeters, no additional units are needed.\n\nR2: B.1.4"
+    },
+    {
+      "name": "PATIENT_SEX_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Patient sex,. Value must be one of the following\n\n1=Male\n2=Female\n\nnullFlavor: MSK, UNK, ASKU, NASK\n\n[D.5]\n\nR2: B.1.5",
+      "fk": "ICSR_LOOKUP.PATIENT_SEX.PATIENT_SEX_ID",
+      "value_map_ref": "PATIENT_SEX"
+    },
+    {
+      "name": "PATIENT_SEX_ID_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 5 (UNK, ASKU, NASK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "LAST_MENSTRUAL_DATE_PRC_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Format Id for the last menstrual date of patient.",
+      "fk": "ICSR_LOOKUP.DATE_PRECISION.DATE_PRECISION_ID",
+      "value_map_ref": "DATE_PRECISION"
+    },
+    {
+      "name": "LAST_MENSTRUAL_DATE",
+      "type": "DATE",
+      "nullable": true,
+      "description": "Last menstrual period date. This data element captures the date of the last menstrual period of the patient when it is relevant. Imprecise dates can be included (e.g. month and year, or year only). Other information on menopause or conditions related to menopause should be captured in the data element D.7.1.r. If this report is for a child/foetus, then the mothers last menstrual period is captured in the data element D.10.3. nullFlavor: MSK [D.6] R2: B.1.6b"
+    },
+    {
+      "name": "MEDICAL_HISTORY",
+      "type": "CLOB",
+      "nullable": true,
+      "description": "Text for relevant medical history and concurrent conditions (not including reaction/event). [D.7.2]\n\nR2: B.1.7"
+    },
+    {
+      "name": "MEDICAL_HISTORY_NF_ID",
+      "type": "NUMBER(15,0)",
+      "nullable": true,
+      "description": "Null flavour pattern 5 (UNK, ASKU, NASK)",
+      "fk": "ICSR_LOOKUP.NULL_FLAVOUR.NULL_FLAVOUR_ID",
+      "value_map_ref": "NULL_FLAVOUR"
+    },
+    {
+      "name": "RESULTS_TESTS_PROCEDURES",
+      "type": "VARCHAR2(4000)",
+      "nullable": true,
+      "description": "Test/Procedure Results\n\nNot in ICSR R3 as a text field.\n\nR2: B.3.2"
+    },
+    {
+      "name": "IS_CONCOMITANT_THERAPIES",
+      "type": "NUMBER(1,0)",
+      "nullable": true,
+      "description": "Had there been any concomitant therapies? [D.7.3]\n\nThis is not present in R2."
+    },
+    {
+      "name": "CREATED_ON",
+      "type": "TIMESTAMP(6)",
+      "nullable": true,
+      "description": "When record was created."
+    },
+    {
+      "name": "INITIALS_CLEANED",
+      "type": "VARCHAR2(4000)",
+      "nullable": true
+    }
+  ],
+  "value_maps": {
+    "NULL_FLAVOUR": {
+      "_count": 15,
+      "1": "No information",
+      "2": "Invalid",
+      "3": "Other",
+      "4": "Positive infinity",
+      "5": "Negative infinity",
+      "6": "Unencoded",
+      "7": "Derived",
+      "8": "Unknown",
+      "9": "Asked but unknown",
+      "10": "Temporarily unavailable",
+      "11": "Not asked",
+      "12": "Sufficient quantity",
+      "13": "Trace",
+      "14": "Masked",
+      "15": "Not applicable"
+    },
+    "DATE_PRECISION": {
+      "_count": 8,
+      "7": "Millisecond",
+      "1": "Second",
+      "2": "Minute",
+      "3": "Day",
+      "4": "Month",
+      "5": "Year",
+      "6": "Century",
+      "8": "Hour"
+    },
+    "TIME_INTERVAL": {
+      "_count": 12,
+      "1": "Years",
+      "2": "Months",
+      "3": "Weeks",
+      "4": "Days",
+      "5": "Hours",
+      "6": "Minutes",
+      "7": "Seconds",
+      "8": "Trimester",
+      "9": "Cyclical",
+      "10": "As Necessary",
+      "11": "Total",
+      "12": "Decade"
+    },
+    "PATIENT_AGE_GROUP": {
+      "_count": 7,
+      "1": "Foetus",
+      "2": "Neonate (Preterm and Term newborns)",
+      "3": "Infant",
+      "4": "Child",
+      "5": "Adolescent",
+      "6": "Adult",
+      "7": "Elderly"
+    },
+    "PATIENT_SEX": {
+      "_count": 2,
+      "1": "Male",
+      "2": "Female"
+    }
+  }
+}

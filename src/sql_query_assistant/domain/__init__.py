@@ -1,8 +1,9 @@
-# Input models
-from .input import (
+# Table card models (input + enriched)
+from .table_card import (
     Column,
     TableCard,
-    TableMetadata
+    TableCardWithSelection,
+    TableMetadata,
 )
 # Output models
 from .sql_draft import SQLDraft

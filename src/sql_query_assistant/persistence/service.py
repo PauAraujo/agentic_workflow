@@ -11,7 +11,6 @@ from sql_query_assistant.state import WorkflowState
 
 logger = logging.getLogger(__name__)
 
-
 RUN_ID_COLUMN = "run_id"
 QUERY_RUNS_FIELDNAMES = [
     RUN_ID_COLUMN,
@@ -24,8 +23,6 @@ QUERY_RUNS_FIELDNAMES = [
     "deployment_name",
 ]
 JSON_FILENAME_PATTERN = "run_{:05d}.json"
-
-
 
 
 def _get_next_run_id(query_runs_file: Path) -> int:
@@ -146,9 +143,10 @@ def save_full_state_json(state: WorkflowState, settings: Settings, run_id: int) 
     json_file = json_dir / JSON_FILENAME_PATTERN.format(run_id)
 
     # Convert state to serializable format
+    table_cards_with_selection = state.get("table_cards_with_selection", [])
     serializable_state = {
         "user_query": state["user_query"],
-        "table_cards": [card.model_dump() for card in state["table_cards"]],
+        "table_cards_with_selection": [tc.model_dump() for tc in table_cards_with_selection],
         "sql_draft": state["sql_draft"].model_dump() if state.get("sql_draft") else None,
     }
 
