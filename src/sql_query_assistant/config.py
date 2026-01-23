@@ -27,7 +27,7 @@ PROJECT_ROOT = _find_project_root()
 
 class PathSettings(BaseModel):
     """
-    Paths to input/output paths used by the workflow.
+    Paths to input/output directories used by the workflow.
 
     The base fields can be overridden via environment settings, while
     the derived properties keep call sites simple and consistent.
@@ -303,7 +303,8 @@ class AgentSettings(BaseModel):
 
 class Settings(EnvBaseSettings):
     """
-    Application settings combining Azure, AWS, and Langfuse configurations.
+    Application settings combining Azure OpenAI, AWS Bedrock, Langfuse,
+    Azure Search, table selector, paths, and per-agent model configurations.
 
     Azure settings are required and loaded from environment variables.
     AWS and Langfuse settings are optional - if their environment variables

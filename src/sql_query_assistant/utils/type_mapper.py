@@ -1,7 +1,5 @@
 import re
 
-from copy import deepcopy
-
 from sql_query_assistant.domain import Column, TableCard
 
 
@@ -77,12 +75,11 @@ def transform_column_type(column: Column, source_dialect: str, target_dialect: s
     Returns:
         New Column object with transformed type
     """
-    new_column = deepcopy(column)
-
     if source_dialect.lower() == "oracle" and target_dialect.lower() == "sqlite":
-        new_column.type = map_oracle_type_to_sqlite(column.type)
+        new_type = map_oracle_type_to_sqlite(column.type)
+        return column.model_copy(update={"type": new_type})
 
-    return new_column
+    return column
 
 
 def transform_table_card_types(
@@ -91,9 +88,7 @@ def transform_table_card_types(
     target_dialect: str,
 ) -> list[TableCard]:
     """
-    Transforms all column types in a list of table cards from source to target dialect.
-
-    This function creates deep copies of the table cards to avoid mutating the originals.
+    Transforms types in a list of table cards from source to target dialect.
 
     Args:
         table_cards: List of TableCard objects to transform
@@ -103,18 +98,17 @@ def transform_table_card_types(
     Returns:
         New list of TableCard objects with transformed column types
     """
-    # Create deep copies to avoid mutating originals
     new_table_cards = []
 
     for table_card in table_cards:
-        new_table_card = deepcopy(table_card)
-
         # Transform each column's type
-        new_table_card.columns = [
+        transformed_columns = [
             transform_column_type(col, source_dialect, target_dialect)
             for col in table_card.columns
         ]
 
+        # Create new TableCard with transformed columns
+        new_table_card = table_card.model_copy(update={"columns": transformed_columns})
         new_table_cards.append(new_table_card)
 
     return new_table_cards

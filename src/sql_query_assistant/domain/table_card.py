@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class TableMetadata(BaseModel):
     """Metadata describing a database table."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     qualified_name: str = Field(description="Schema-qualified table name (e.g., 'ICSR.PATIENT')")
     schema_name: str = Field(description="Database schema name (e.g., 'ICSR', 'ICSR_LOOKUP')")
@@ -19,7 +19,7 @@ class TableMetadata(BaseModel):
 class Column(BaseModel):
     """Column definition with optional FK reference and value map."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     name: str
     type: str
@@ -70,7 +70,7 @@ class TableCard(BaseModel):
     model that flows through the entire pipeline.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     table_metadata: TableMetadata
     columns: list[Column] = Field(default_factory=list)
