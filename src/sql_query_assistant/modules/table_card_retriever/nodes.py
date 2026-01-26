@@ -12,7 +12,7 @@ from openai import AzureOpenAI
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.state import WorkflowState
-from sql_query_assistant.domain import TableCard
+from sql_query_assistant.domain import TableCard, RetrievalResult
 from sql_query_assistant.utils.loaders import load_table_cards
 from sql_query_assistant.utils.type_mapper import transform_table_card_types
 from .models import TableCardSearchResult
@@ -24,6 +24,7 @@ STATE_KEY_USER_QUERY = "user_query"
 STATE_KEY_TABLE_CARDS = "table_cards"
 STATE_KEY_ALL_TABLE_CARDS = "all_table_cards"
 STATE_KEY_ALLOWED_SCHEMAS = "allowed_schemas"
+STATE_KEY_RETRIEVAL_RESULT = "retrieval_result"
 
 # Azure Search field names
 FIELD_ID = "id"
@@ -36,6 +37,11 @@ FIELD_RERANKER_SCORE = "@search.reranker_score"
 
 # Azure Search configuration
 SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
+
+# Schema prioritization: ICSR_LOOKUP contains small reference/lookup tables
+# that are frequently needed for JOINs but rarely surface in semantic search
+# Prioritizing them in FK expansion ensures these critical tables are included
+PRIORITY_SCHEMA = "ICSR_LOOKUP"
 
 # Embedding client cache (module-level singleton)
 _embedding_client: AzureOpenAI | None = None
@@ -76,29 +82,31 @@ def _generate_query_embedding(query: str, settings: Settings) -> list[float]:
 
 
 def _expand_with_fk_relationships(
-    core_cards: list[TableCard],
+    reranked_top_cards: list[TableCard],
     all_cards: list[TableCard],
     settings: Settings,
-) -> list[TableCard]:
+) -> tuple[list[TableCard], list[str]]:
     """
-    Expand core table cards by adding their FK relationship neighbors.
+    Expand reranked top cards by adding their FK relationship neighbors.
 
-    For the top N core tables (based on settings), finds:
-    - Forward FKs: tables that the core table references
-    - Reverse FKs: tables that reference the core table (optional)
+    For the top N tables from the reranked results finds related tables via FK relationships:
+    - Forward FKs: tables that the source table references
+    - Reverse FKs: tables that reference the source table (optional)
 
-    Prioritizes ICSR_LOOKUP schema tables and deduplicates against core cards.
+    Prioritizes PRIORITY_SCHEMA tables (see constant) and deduplicates against existing cards.
 
     Args:
-        core_cards: List of core table cards (already selected/ranked)
+        reranked_top_cards: Table cards selected after semantic reranking
         all_cards: All available table cards for FK lookup
         settings: Application settings with FK expansion configuration
 
     Returns:
-        List of expanded table cards (core + FK neighbors), capped at max_total
+        Tuple of:
+        - List of expanded table cards (reranked + FK neighbors), capped at max_total
+        - List of qualified names of tables added via FK expansion
     """
     if not settings.azure_search or not settings.azure_search.fk_expansion_enabled:
-        return core_cards
+        return reranked_top_cards, []
 
     # Get expansion parameters
     source_count = settings.azure_search.fk_expansion_source_count
@@ -106,7 +114,7 @@ def _expand_with_fk_relationships(
     include_reverse = settings.azure_search.fk_expansion_include_reverse
 
     if source_count == 0:
-        return core_cards[:max_total]
+        return reranked_top_cards[:max_total], []
 
     # Build lookup index: qualified_name -> TableCard
     all_cards_by_name = {
@@ -114,14 +122,14 @@ def _expand_with_fk_relationships(
         for card in all_cards
     }
 
-    # Track expanded tables (using qualified names)
-    core_qualified_names = {card.table_metadata.qualified_name for card in core_cards}
-    expanded_qualified_names: set[str] = set()
+    # Track which table cards we already have (to avoid duplicates during FK expansion)
+    already_included = {card.table_metadata.qualified_name for card in reranked_top_cards}
+    fk_neighbor_names: set[str] = set()
 
-    # Expand from top N source cards
-    expansion_source_cards = core_cards[:source_count]
+    # Select top N reranked cards as sources for FK expansion
+    expansion_source_cards = reranked_top_cards[:source_count]
     logger.info(
-        f"Expanding FK relationships from top {len(expansion_source_cards)} core tables: "
+        f"Expanding FK relationships from top {len(expansion_source_cards)} reranked tables: "
         f"{', '.join(c.table_metadata.qualified_name for c in expansion_source_cards)}"
     )
 
@@ -129,9 +137,9 @@ def _expand_with_fk_relationships(
         # Forward FKs: tables this card references
         for col in source_card.columns:
             if col.fk_qualified_table:
-                # Skip if already in core or already expanded
-                if col.fk_qualified_table not in core_qualified_names:
-                    expanded_qualified_names.add(col.fk_qualified_table)
+                # Skip if already in reranked set
+                if col.fk_qualified_table not in already_included:
+                    fk_neighbor_names.add(col.fk_qualified_table)
                     logger.debug(
                         f"  Forward FK: {source_card.table_metadata.qualified_name}.{col.name} "
                         f"-> {col.fk_qualified_table}"
@@ -141,74 +149,85 @@ def _expand_with_fk_relationships(
         if include_reverse:
             source_qualified_name = source_card.table_metadata.qualified_name
             for candidate_card in all_cards:
-                # Skip if this is the source card itself or already in core
+                # Skip if already in reranked set
                 candidate_qualified_name = candidate_card.table_metadata.qualified_name
-                if candidate_qualified_name in core_qualified_names:
+                if candidate_qualified_name in already_included:
                     continue
 
                 # Check if any column references the source card
                 for col in candidate_card.columns:
                     if col.fk_qualified_table == source_qualified_name:
-                        expanded_qualified_names.add(candidate_qualified_name)
+                        fk_neighbor_names.add(candidate_qualified_name)
                         logger.debug(
                             f"  Reverse FK: {candidate_qualified_name}.{col.name} "
                             f"-> {source_qualified_name}"
                         )
                         break  # Only need one FK reference to include this table
 
-    # Prioritize ICSR_LOOKUP tables (lookup/reference tables are typically small and critical)
-    lookup_tables = [
-        name for name in expanded_qualified_names
-        if name.startswith("ICSR_LOOKUP.")
+    # Separate FK neighbors by schema for prioritization
+    lookup_table_names = [
+        name for name in fk_neighbor_names
+        if name.startswith(f"{PRIORITY_SCHEMA}.")
     ]
-    other_tables = [
-        name for name in expanded_qualified_names
-        if not name.startswith("ICSR_LOOKUP.")
+    other_table_names = [
+        name for name in fk_neighbor_names
+        if not name.startswith(f"{PRIORITY_SCHEMA}.")
     ]
-
-    # Combine: core + lookup tables + other tables, capped at max_total
-    prioritized_names = list(core_qualified_names) + sorted(lookup_tables) + sorted(other_tables)
+    # Find NAMES first to ensure stable ordering
+    # Priority order: reranked cards > lookup tables > other FK tables
+    # This ensures semantically relevant tables come first, then critical lookup tables
+    prioritized_names = (
+        [card.table_metadata.qualified_name for card in reranked_top_cards]
+        + sorted(lookup_table_names)
+        + sorted(other_table_names)
+    )
     final_qualified_names = prioritized_names[:max_total]
 
-    # Build final list preserving core card order, then expanded cards
+    # Find CARD OBJECTS second to build final list
+    # We preserve reranked order, then FK-expanded cards
     final_cards = []
 
-    # Add core cards first (preserving their ranking order)
-    for card in core_cards:
+    # Add reranked CARDS first (preserving their semantic ranking order)
+    # Note: max_total may be smaller than len(reranked_top_cards), excluding some
+    for card in reranked_top_cards:
         if card.table_metadata.qualified_name in final_qualified_names:
             final_cards.append(card)
 
-    # Add expanded cards (sorted for stability)
-    expanded_cards = []
+    # Add FK-expanded cards next (we sort it after for stability)
+    fk_expanded_cards = []
     for qualified_name in final_qualified_names:
-        if qualified_name not in core_qualified_names:
+        # Skip already included cards, which are already in final_cards
+        if qualified_name not in already_included:
             card = all_cards_by_name.get(qualified_name)
             if card:
-                expanded_cards.append(card)
+                fk_expanded_cards.append(card)
             else:
+                # This should not happen, but log a warning if it does
                 logger.warning(
                     f"FK expansion found reference to {qualified_name} "
                     f"but no table card exists"
                 )
 
-    # Sort expanded cards: ICSR_LOOKUP first, then alphabetically
-    expanded_cards.sort(
-        key=lambda c: (
-            0 if c.table_metadata.schema_name == "ICSR_LOOKUP" else 1,
-            c.table_metadata.qualified_name
+    # Sort FK-expanded cards: priority schema first, then alphabetically
+    fk_expanded_cards.sort(
+        key=lambda card: (
+            0 if card.table_metadata.schema_name == PRIORITY_SCHEMA else 1,
+            card.table_metadata.qualified_name
         )
     )
-    final_cards.extend(expanded_cards)
+    final_cards.extend(fk_expanded_cards)
 
     logger.info(
-        f"FK expansion: {len(core_cards)} core -> {len(final_cards)} total "
-        f"(+{len(expanded_cards)} expanded, {len(lookup_tables)} lookup tables)"
+        f"FK expansion: {len(reranked_top_cards)} reranked -> {len(final_cards)} total "
+        f"(+{len(fk_expanded_cards)} via FK, {len(lookup_table_names)} lookup tables)"
     )
     logger.debug(
         f"Final table list: {', '.join(c.table_metadata.qualified_name for c in final_cards)}"
     )
 
-    return final_cards
+    # Return both the final cards and the list of FK-expanded table names
+    fk_expanded_names = [c.table_metadata.qualified_name for c in fk_expanded_cards]
+    return final_cards, fk_expanded_names
 
 
 def retrieve_relevant_table_cards(
@@ -244,7 +263,7 @@ def retrieve_relevant_table_cards(
     logger.info(f"Retrieving relevant table cards for query: '{user_query}'")
 
     # Initialize Azure Search client
-    search_client = SearchClient(
+    search_client = SearchClient( # TODO: SearchClient currently not cached
         endpoint=str(settings.azure_search.endpoint),
         index_name=settings.azure_search.table_cards_index_name,
         credential=AzureKeyCredential(settings.azure_search.query_key)
@@ -259,13 +278,14 @@ def retrieve_relevant_table_cards(
         logger.info(f"Applying schema filter: {schema_filter}")
 
     try:
-        # Build search parameters
+        # Candidate retrieval via Azure Search with semantic reranking
+        # Uses hybrid search (BM25 + vector) if enabled, otherwise lexical only
         search_params = {
             "search_text": user_query,
-            "query_type": QueryType.SEMANTIC, # portal default: QueryType.SIMPLE (BM25) --> to experiment with
-            "semantic_configuration_name": SEMANTIC_CONFIG_NAME, # specific to semantic search (remove if not using semantic)
-            "query_caption": QueryCaptionType.EXTRACTIVE, # specific to semantic search (remove if not using semantic)
-            "query_answer": QueryAnswerType.EXTRACTIVE, # specific to semantic search (remove if not using semantic)
+            "query_type": QueryType.SEMANTIC,
+            "semantic_configuration_name": SEMANTIC_CONFIG_NAME, # specific to semantic search
+            "query_caption": QueryCaptionType.EXTRACTIVE, # specific to semantic search
+            "query_answer": QueryAnswerType.EXTRACTIVE, # specific to semantic search
             "top": settings.azure_search.top_k,
             "select": [FIELD_ID, FIELD_SCHEMA_NAME, FIELD_TABLE_NAME, FIELD_QUALIFIED_NAME],
         }
@@ -288,7 +308,6 @@ def retrieve_relevant_table_cards(
         else:
             logger.info("Using lexical search with semantic reranker (hybrid disabled)")
 
-        # Perform hybrid search: BM25 + vector (RRF fusion) + semantic reranker
         results = search_client.search(**search_params)
 
         # Extract search results
@@ -310,20 +329,29 @@ def retrieve_relevant_table_cards(
             )
 
         if not search_results:
-            # No results from search - return all tables, let table_selector LLM filter
-            logger.warning("No results from Azure Search; returning all tables for LLM filtering")
-            all_table_cards = load_table_cards(settings, schemas=allowed_schemas)
-            if settings.target_sql_dialect.lower() == "sqlite":
-                all_table_cards = transform_table_card_types(all_table_cards, "oracle", "sqlite")
-            return {
-                STATE_KEY_TABLE_CARDS: all_table_cards,
-                STATE_KEY_ALL_TABLE_CARDS: all_table_cards
-            }
+            logger.error(
+                "Azure Search returned zero results. "
+                "This likely indicates an infrastructure problem. "
+                "Diagnostic context: "
+                f"query='{user_query}', "
+                f"filter={schema_filter or 'none'}, "
+                f"top_k={settings.azure_search.top_k}, "
+                f"hybrid_search={'enabled' if settings.azure_search.hybrid_search_enabled else 'disabled'}, "
+                f"semantic_config='{SEMANTIC_CONFIG_NAME}'"
+            )
+            raise RuntimeError(
+                f"Azure Search returned no results for query: '{user_query}'. "
+                "Check index configuration, embeddings, and semantic reranker setup."
+            )
 
         logger.info(f"Retrieved {len(search_results)} relevant table cards from Azure Search")
 
-        # Load the full table cards for the matching tables (filtered by schemas if specified)
-        all_table_cards = load_table_cards(settings, schemas=allowed_schemas)
+        # Track tables from initial search (for RetrievalResult)
+        tables_from_search = [sr.qualified_name for sr in search_results]
+
+        # Load all table cards (unfiltered) to enable cross-schema FK expansion
+        # Search results are already schema-filtered by Azure Search above
+        all_table_cards = load_table_cards(settings)
         if settings.target_sql_dialect.lower() == "sqlite":
             all_table_cards = transform_table_card_types(all_table_cards, "oracle", "sqlite")
 
@@ -345,25 +373,42 @@ def retrieve_relevant_table_cards(
                     f"but not in loaded table cards"
                 )
 
-        # Select core cards (top N based on reranker score)
-        core_count = settings.azure_search.core_count
-        core_cards = relevant_table_cards[:core_count]
+        # Take top N from reranked results (Azure Search already did the reranking)
+        reranker_top_k = settings.azure_search.reranker_top_k
+        selected_cards = relevant_table_cards[:reranker_top_k]
+
+        # Track tables after reranking (for RetrievalResult)
+        tables_after_rerank = [
+            card.table_metadata.qualified_name for card in selected_cards
+        ]
 
         logger.info(
-            f"Selected {len(core_cards)} core table cards: "
-            f"{', '.join(card.table_metadata.qualified_name for card in core_cards)}"
+            f"Selected top {len(selected_cards)} table cards after semantic reranking: "
+            f"{', '.join(tables_after_rerank)}"
         )
 
-        # Expand with FK relationships
-        expanded_cards = _expand_with_fk_relationships(
-            core_cards=core_cards,
+        # FK expansion: add related tables via foreign key relationships
+        expanded_cards, tables_from_fk_expansion = _expand_with_fk_relationships(
+            reranked_top_cards=selected_cards,
             all_cards=all_table_cards,
             settings=settings
         )
 
+        # Build final table list for RetrievalResult
+        tables_final = [card.table_metadata.qualified_name for card in expanded_cards]
+
+        # Create RetrievalResult with full pipeline visibility
+        retrieval_result = RetrievalResult(
+            tables_from_search=tables_from_search,
+            tables_after_rerank=tables_after_rerank,
+            tables_from_fk_expansion=tables_from_fk_expansion,
+            tables_final=tables_final,
+        )
+
         return {
+            STATE_KEY_RETRIEVAL_RESULT: retrieval_result,
             STATE_KEY_TABLE_CARDS: expanded_cards,
-            STATE_KEY_ALL_TABLE_CARDS: all_table_cards
+            STATE_KEY_ALL_TABLE_CARDS: all_table_cards,
         }
 
     except Exception as e:
