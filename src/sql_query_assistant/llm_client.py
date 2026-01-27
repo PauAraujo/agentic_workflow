@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage
 from langchain_openai import AzureChatOpenAI
 from langchain_aws import ChatBedrock
 
-from .config import Settings, ModelConfig
+from sql_query_assistant.config import Settings, ModelConfig
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class LLMClient:
         if not self.settings.aws:
             raise ValueError(
                 "AWS Bedrock settings not configured. "
-                "Set AWS_BEDROCK_REGION and AWS_PROFILE."
+                "Set AWS_REGION and AWS_PROFILE."
             )
 
         callbacks = [self.langfuse_handler] if self.langfuse_handler else None

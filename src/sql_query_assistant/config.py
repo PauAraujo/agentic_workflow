@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 from typing import Literal
 from pydantic import (
-    AliasChoices,
-    AnyHttpUrl,
-    BaseModel,
     Field,
+    BaseModel,
+    ConfigDict,
+    AnyHttpUrl,
     ValidationError,
     model_validator,
 )
@@ -95,11 +95,6 @@ class AzureSettings(EnvBaseSettings):
         description="Azure OpenAI API version",
         default="2024-02-15-preview",
     )
-    default_deployment_name: str = Field(
-        validation_alias="AZURE_OPENAI_DEPLOYMENT",
-        description="Default Azure OpenAI deployment name",
-        default="gpt-4o-mini",
-    )
     max_retries: int = Field(
         validation_alias="AZURE_OPENAI_MAX_RETRIES",
         default=20,
@@ -152,12 +147,12 @@ class AzureSearchSettings(EnvBaseSettings):
         ge=1,
         le=100
     )
-    core_count: int = Field(
-        validation_alias="TABLE_CARD_CORE_COUNT",
+    reranker_top_k: int = Field(
+        validation_alias="AZURE_SEARCH_RERANKER_TOP_K",
         default=10,
-        description="Number of core table cards to select after reranking",
+        description="Number of table cards to select after semantic reranking (from the top_k candidate pool)",
         ge=1,
-        le=50
+        le=250
     )
     fk_expansion_enabled: bool = Field(
         validation_alias="FK_EXPANSION_ENABLED",
@@ -233,12 +228,12 @@ class AwsSettings(EnvBaseSettings):
     Uses AWS Profile (AWS_PROFILE) to authenticate via ~/.aws/credentials.
     """
     region: str = Field(
-        validation_alias=AliasChoices("AWS_BEDROCK_REGION", "AWS_REGION"),
+        validation_alias="AWS_REGION",
         description="AWS region for Bedrock service",
         default="eu-central-1",
     )
     profile: str | None = Field(
-        validation_alias=AliasChoices("AWS_PROFILE", "AWS_DEFAULT_PROFILE"),
+        validation_alias="AWS_PROFILE",
         description="AWS profile name from ~/.aws/credentials",
         default=None,
     )
@@ -254,7 +249,11 @@ class ModelConfig(BaseModel):
     Configuration for a specific model instance.
 
     Supports both Azure OpenAI and AWS Bedrock providers.
+    Used both at runtime (for LLM calls) and for persistence (in RunRecord).
     """
+
+    model_config = ConfigDict(frozen=True)
+
     provider: Literal["azure", "aws"] = Field(
         description="LLM provider to use"
     )
@@ -274,7 +273,11 @@ class AgentSettings(BaseModel):
     Per-agent model configuration.
 
     Each agent can use a different provider and model.
+    Also used as the persistence snapshot in RunRecord.
     """
+
+    model_config = ConfigDict(frozen=True)
+
     drafter: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             provider="azure",
@@ -355,9 +358,6 @@ class Settings(EnvBaseSettings):
 
         # Load Azure Search if available
         if self.azure_search is None:
-            # TESTING: Temporarily disable Azure Search to test fallback
-            #self.azure_search = None # uncomment this line,
-            # and comment out the try-except block below
             try:
                 self.azure_search = AzureSearchSettings()
             except ValidationError:
@@ -400,10 +400,10 @@ class Settings(EnvBaseSettings):
                 if temperature:
                     config_dict["temperature"] = float(temperature)
 
-                # Update the agent config
+                # Update the agent config (immutable pattern for frozen model)
                 current_config = getattr(self.agents, agent_name)
                 updated_config = current_config.model_copy(update=config_dict)
-                setattr(self.agents, agent_name, updated_config)
+                self.agents = self.agents.model_copy(update={agent_name: updated_config})
 
         return self
 
@@ -416,7 +416,7 @@ class Settings(EnvBaseSettings):
             if agent_config.provider == "aws" and self.aws is None:
                 raise ValueError(
                     f"Agent '{agent_name}' is configured to use AWS provider, "
-                    f"but AWS settings are not available. Please set AWS_BEDROCK_REGION "
+                    f"but AWS settings are not available. Please set AWS_REGION "
                     f"and AWS_PROFILE."
                 )
 

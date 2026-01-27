@@ -6,8 +6,8 @@ Natural-language to SQL assistant built on a LangGraph workflow. It finds the ri
 
 ## Prerequisites
 
-- Python 3.13+ 
-- Azure OpenAI credentials (endpoint, API key, deployment name)
+- Python 3.13+
+- Azure OpenAI credentials (endpoint, API key)
 - Input data: table card JSONs and SQLite DB files (see [setup/SETUP.md](setup/SETUP.md))
 
 Optional: AWS Bedrock (alternative LLM), Azure AI Search (RAG retrieval), Langfuse (tracing)
@@ -38,7 +38,6 @@ copy .env.example .env        # Windows
 #    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 #    AZURE_OPENAI_API_KEY=your-api-key
 #    AZURE_OPENAI_API_VERSION=2024-02-15-preview
-#    AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 
 # Run
 python main.py "Count all cases"
@@ -75,7 +74,6 @@ Create `.env` from `.env.example` and set:
 AZURE_OPENAI_ENDPOINT=your-azure-openai-endpoint
 AZURE_OPENAI_API_KEY=your-azure-openai-api-key
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
-AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 ```
 
 RAG for table cards:
@@ -85,7 +83,7 @@ AZURE_SEARCH_ADMIN_KEY=
 AZURE_SEARCH_QUERY_KEY=
 AZURE_SEARCH_TABLE_CARDS_INDEX=your_table_cards_index
 AZURE_SEARCH_TOP_K=50
-TABLE_CARD_CORE_COUNT=10
+AZURE_SEARCH_RERANKER_TOP_K=10
 FK_EXPANSION_ENABLED=true
 FK_EXPANSION_SOURCE_COUNT=3
 FK_EXPANSION_MAX_TOTAL=25
@@ -109,7 +107,7 @@ MAX_REPAIR_ATTEMPTS=3
 TABLE_SELECTOR_CORE_TABLES=["example_table1", "example_table2"]
 TABLE_SELECTOR_NOISE_VALUE_MAPS= ["example_table2", "example_table3"]
 LANGFUSE_*=...
-AWS_BEDROCK_REGION=...   # plus AWS_PROFILE if using Bedrock
+AWS_REGION=...           # plus AWS_PROFILE if using Bedrock
 ```
 
 ### Run from CLI

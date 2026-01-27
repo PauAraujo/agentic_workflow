@@ -87,7 +87,7 @@ SSO registration scopes [sso:account:access]: -- press Enter and click the link 
 In your `.env` file, configure which agents should use AWS Claude:
 ``` 
 AWS_PROFILE="YourProfileName"
-AWS_BEDROCK_REGION="eu-central-1"
+AWS_REGION="eu-central-1"
 
 # Example using Claude Sonnet 4.5 for the drafter agent
 DRAFTER_MODEL_PROVIDER="aws"
@@ -136,7 +136,6 @@ Click the link (*tip:* in incognito mode) and login to your EMA account.
      - `AZURE_OPENAI_ENDPOINT`
      - `AZURE_OPENAI_API_KEY`
      - `AZURE_OPENAI_API_VERSION`
-     - `AZURE_OPENAI_DEPLOYMENT`.
    - Azure Search (for indexing/retrieval): 
      - `AZURE_SEARCH_ENDPOINT`
      - `AZURE_SEARCH_QUERY_KEY`
