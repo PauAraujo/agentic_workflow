@@ -6,6 +6,7 @@ from sql_query_assistant.domain import (
     SQLDraft,
     QueryResult,
     ValidationResult,
+    RetrievalResult,
 )
 
 
@@ -19,12 +20,16 @@ class WorkflowState(TypedDict, total=False):
 
     # Input
     user_query: str
-    table_cards: list[TableCard]  # Tables from retriever (before table selection)
-    all_table_cards: list[TableCard]  # All available table cards (for table_selector to add missing tables)
-    allowed_schemas: list[str] | None  # None = all schemas, empty list not allowed
+    allowed_schemas: list[str] | None  # None = all schemas
+
+    # Table card retriever output
+    retrieval_result: RetrievalResult  # detailed retrieval pipeline results
+    table_cards: list[TableCard]  # final tables from retriever (before table selection)
+    all_table_cards: list[TableCard]  # all available table cards (for table_selector to add missing tables)
 
     # Table Selector output
-    table_cards_with_selection: list[TableCardWithSelection]  # Tables enriched with selection context
+    table_cards_with_selection: list[TableCardWithSelection]  # enriched with selection context
+    selection_rationale: str  # LLM's explanation of overall table selection strategy
 
     # SQL Drafter output
     sql_draft: SQLDraft
@@ -34,10 +39,10 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Repairer tracking
     repair_attempts: int
-    repair_history: list[SQLDraft]  # all SQL drafts created during repair attempts
+    repair_history: list[SQLDraft] # populated ONLY when repair occurs
 
     # SQL Executor output
     query_result: QueryResult
 
     # Persistence output
-    run_id: int
+    run_id: str
