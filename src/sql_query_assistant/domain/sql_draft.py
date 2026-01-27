@@ -2,18 +2,15 @@ from pydantic import BaseModel, Field
 
 
 class SQLDraft(BaseModel):
-    """Draft SQL statement produced by the sql_drafter agent."""
+    """
+    SQL statement produced by the LLM (drafter or repairer).
 
-    sql: str = Field(..., description="Draft SQL statement addressing the task and assumptions")
-    rationale: str = Field(
-        ...,
-        description="Short explanation of how the SQL satisfies the request",
-    )
+    Used as both the LLM response schema and the workflow state model.
+    """
+
+    sql: str = Field(..., description="SQL statement")
+    rationale: str = Field(..., description="Explanation of the SQL logic or what was fixed")
     tables_used: list[str] = Field(
         ...,
-        description="Tables referenced in the draft query, if detected",
-    )
-    dialect: str = Field(
-        ...,
-        description="SQL dialect used for this query (e.g., 'sqlite', 'oracle', 'postgres')"
+        description="Schema-qualified table names referenced in the query (e.g., ['SCHEMA.TABLE'])"
     )

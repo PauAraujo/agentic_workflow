@@ -41,7 +41,7 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         }
 
     sql = sql_draft.sql
-    dialect = sql_draft.dialect
+    dialect = settings.target_sql_dialect
     logger.info("Validating SQL (dialect: %s): %s", dialect, sql[:100])
 
     # Initialize result

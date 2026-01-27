@@ -6,7 +6,6 @@ from sql_query_assistant.domain import SQLDraft
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import ModelConfig
 from sql_query_assistant.prompting import prompt_factory
-from .models import RawSQLRepairResponse
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -67,20 +66,16 @@ def repair_sql(
 
     # Call LLM with structured output
     try:
-        llm_response = client.call_llm(
+        repaired_draft = client.call_llm(
             messages=prompt_messages,
-            schema=RawSQLRepairResponse,
+            schema=SQLDraft,
             model_config=model_config,
         )
-
-        repaired_draft = SQLDraft(
-            sql=llm_response.sql,
-            rationale=llm_response.rationale,
-            tables_used=llm_response.tables_used,
-            dialect=target_dialect,
-        )
-
         logger.info("SQL repair completed (dialect: %s). New SQL: %s", target_dialect, repaired_draft.sql[:100])
+
+        # On first repair, preserve the original draft in history so it's not lost
+        if not repair_history:
+            repair_history.append(sql_draft) # original failed draft
 
         # Track repair history for audit trail
         repair_history.append(repaired_draft)

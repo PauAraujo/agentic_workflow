@@ -1,7 +1,6 @@
 import json
 import logging
 
-from .models import RawSQLDraftResponse
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import ModelConfig
@@ -48,17 +47,10 @@ def draft_sql(
         ),
     )
 
-    llm_response = client.call_llm(
+    sql_draft = client.call_llm(
         messages=prompt_messages,
-        schema=RawSQLDraftResponse,
+        schema=SQLDraft,
         model_config=model_config,
-    )
-
-    sql_draft = SQLDraft(
-        sql=llm_response.sql,
-        rationale=llm_response.rationale,
-        tables_used=llm_response.tables_used,
-        dialect=target_dialect,
     )
     logger.info("SQL draft generated (dialect: %s)", target_dialect)
 

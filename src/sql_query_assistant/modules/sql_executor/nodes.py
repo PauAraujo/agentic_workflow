@@ -70,7 +70,7 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
     executable_sql = sql_draft.sql
 
     logger.info("Executing SQL")
-    logger.debug("SQL (dialect: %s): %s", sql_draft.dialect, executable_sql[:100])
+    logger.debug("SQL (dialect: %s): %s", settings.target_sql_dialect, executable_sql[:100])
 
     try:
         # Connect to in-memory database and auto-attach all schema databases
