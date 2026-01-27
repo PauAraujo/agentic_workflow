@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TableSelectionDecision(BaseModel):
@@ -13,7 +13,7 @@ class TableSelectionDecision(BaseModel):
         ...,
         description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
     )
-    reason: str = Field(
+    selection_reason: str = Field(
         ...,
         description="Why this table is needed for the query"
     )
@@ -25,14 +25,16 @@ class TableSelectionDecision(BaseModel):
 
 class TableSelectionResponse(BaseModel):
     """
-    Complete response from the table selection LLM call.
+    Complete response from table selection LLM call.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     selected_tables: list[TableSelectionDecision] = Field(
-        ...,
+        default_factory=list,
         description="All tables selected as needed for the query"
     )
-    rationale: str = Field(
-        ...,
+    rationale: str | None = Field(
+        default=None,
         description="Brief explanation of the table selection strategy"
     )

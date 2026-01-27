@@ -1,13 +1,12 @@
 import json
 import logging
 
-from .models import TableSelectionResponse
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import Settings, ModelConfig
 from sql_query_assistant.prompting import prompt_factory
 from sql_query_assistant.state import WorkflowState
-from sql_query_assistant.domain import TableCard, TableCardWithSelection
+from sql_query_assistant.domain import TableCard, TableCardWithSelection, TableSelectionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +87,8 @@ def select_tables(
     if not retrieved_cards:
         raise ValueError(f"Retriever returned no tables for query: '{user_query[:100]}'")
 
-    # FALLBACK: If all_table_cards wasn't populated by the retriever, we can't
-    # suggest adding new tables - we can only filter the retrieved set.
-    # This happens if: retriever bug, standalone testing, or workflow misconfiguration.
     if not all_cards:
-        logger.warning(
-            "all_table_cards missing from state - table selector will only filter, "
-            "cannot suggest adding tables. Ensure retriever populates all_table_cards."
-        )
-        all_cards = retrieved_cards
+        raise ValueError("all_table_cards missing from state, retriever must populate this field")
 
     logger.info(
         "Table selection: analyzing %d retrieved tables for query: '%s'",
@@ -175,14 +167,14 @@ def select_tables(
         if card:
             selected_cards.append(TableCardWithSelection(
                 table_card=card,
-                selection_reason=table_selection.reason,
+                selection_reason=table_selection.selection_reason,
                 key_columns=table_selection.key_columns,
             ))
             selected_names.add(table_selection.qualified_name)
             logger.debug(
                 "Selected table %s: %s",
                 table_selection.qualified_name,
-                table_selection.reason
+                table_selection.selection_reason
             )
         else:
             # LLM hallucinated a table name, log warning but continue
@@ -205,4 +197,7 @@ def select_tables(
             f"Table selector returned empty result for query: '{user_query[:100]}'"
         )
 
-    return {"table_cards_with_selection": selected_cards}
+    return {
+        "table_cards_with_selection": selected_cards,
+        "selection_rationale": llm_response.rationale,
+    }
