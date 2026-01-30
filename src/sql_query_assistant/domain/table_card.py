@@ -1,4 +1,3 @@
-from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,7 +9,7 @@ class TableMetadata(BaseModel):
     qualified_name: str = Field(description="Schema-qualified table name (e.g., 'ICSR.PATIENT')")
     schema_name: str = Field(description="Database schema name (e.g., 'ICSR', 'ICSR_LOOKUP')")
     name: str = Field(description="Table name without schema prefix")
-    description: Optional[str] = None
+    description: str | None = None
     synonyms: list[str] = Field(default_factory=list)
     primary_key: list[str] = Field(default_factory=list)
     row_count: int | None = None
@@ -23,7 +22,7 @@ class Column(BaseModel):
 
     name: str
     type: str
-    description: Optional[str] = None
+    description: str | None = None
     nullable: bool = True
 
     # Compact FK format: "SCHEMA.TABLE.COLUMN"

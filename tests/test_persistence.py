@@ -1,142 +1,77 @@
 import csv
 import json
-import pytest
+import re
 
-from sql_query_assistant.persistence.service import (
-    _get_next_run_id,
-    _append_to_csv,
-    save_workflow_results,
-    save_full_state_json,
-)
+from sql_query_assistant.persistence.service import save_workflow_results, rebuild_csv_from_json
+from sql_query_assistant.persistence import persist_results
+from sql_query_assistant.domain import RunRecord
 
 
-def test_get_next_run_id_returns_1_when_file_missing(tmp_path):
-    """Return 1 when CSV file doesn't exist."""
-    non_existent_file = tmp_path / "query_runs.csv"
-    assert _get_next_run_id(non_existent_file) == 1
+def is_valid_run_id(run_id: str) -> bool:
+    """Check if run_id matches format YYYYMMDD_HHMMSS_ffffff."""
+    return bool(re.match(r"^\d{8}_\d{6}_\d{6}$", run_id))
 
 
-def test_get_next_run_id_returns_1_when_file_empty(tmp_path):
-    """Return 1 when CSV file exists but is empty."""
-    empty_file = tmp_path / "query_runs.csv"
-    empty_file.write_text("")
-    assert _get_next_run_id(empty_file) == 1
-
-
-def test_get_next_run_id_returns_max_plus_one(tmp_path):
-    """Return max existing ID + 1 when CSV has valid run IDs."""
-    csv_file = tmp_path / "query_runs.csv"
-    csv_file.write_text("run_id,timestamp,user_query\n1,2024-01-01,query1\n3,2024-01-02,query2\n")
-
-    assert _get_next_run_id(csv_file) == 4
-
-
-def test_get_next_run_id_raises_on_corrupted_csv(tmp_path):
-    """Raise RuntimeError when CSV is corrupted and cannot be read."""
-    csv_file = tmp_path / "query_runs.csv"
-    csv_file.write_text("run_id,timestamp\n1,2024-01-01\nBAD_DATA")
-
-    with pytest.raises(RuntimeError, match="Failed to read existing run IDs"):
-        _get_next_run_id(csv_file)
-
-
-def test_append_to_csv_creates_file_with_headers(tmp_path):
-    """Create new CSV file with headers on first write."""
-    csv_file = tmp_path / "test.csv"
-    row = {"id": 1, "name": "test"}
-    fieldnames = ["id", "name"]
-
-    _append_to_csv(csv_file, row, fieldnames)
-
-    content = csv_file.read_text()
-    assert "id,name" in content
-    assert "1,test" in content
-
-
-def test_append_to_csv_appends_without_duplicate_headers(tmp_path):
-    """Append to existing CSV without duplicating headers."""
-    csv_file = tmp_path / "test.csv"
-    fieldnames = ["id", "name"]
-
-    _append_to_csv(csv_file, {"id": 1, "name": "first"}, fieldnames)
-    _append_to_csv(csv_file, {"id": 2, "name": "second"}, fieldnames)
-
-    lines = csv_file.read_text().strip().split("\n")
-    assert len(lines) == 3  # header + 2 data rows
-    assert lines[0] == "id,name"
-
-
-def test_append_to_csv_raises_on_missing_keys(tmp_path):
-    """Raise ValueError when row is missing required fields."""
-    csv_file = tmp_path / "test.csv"
-    row = {"id": 1}  # Missing 'name'
-    fieldnames = ["id", "name"]
-
-    with pytest.raises(ValueError, match="CSV schema mismatch.*Missing keys"):
-        _append_to_csv(csv_file, row, fieldnames)
-
-
-def test_append_to_csv_raises_on_extra_keys(tmp_path):
-    """Raise ValueError when row has unexpected extra fields."""
-    csv_file = tmp_path / "test.csv"
-    row = {"id": 1, "name": "test", "extra": "unexpected"}
-    fieldnames = ["id", "name"]
-
-    with pytest.raises(ValueError, match="CSV schema mismatch.*Extra keys"):
-        _append_to_csv(csv_file, row, fieldnames)
-
-
-def test_save_workflow_results_creates_csv_file(dummy_settings, complete_workflow_state):
-    """Create query_runs.csv with correct data."""
+def test_save_workflow_results_creates_json_and_csv(dummy_settings, complete_workflow_state):
+    """Should create JSON (source of truth) and CSV index with correct content."""
     run_id = save_workflow_results(complete_workflow_state, dummy_settings)
+    assert is_valid_run_id(run_id)
 
-    # Check run_id is assigned
-    assert run_id == 1
-
-    # Check query_runs.csv exists and has correct structure
-    query_runs_file = dummy_settings.paths.query_runs_file
-    assert query_runs_file.exists()
-
-    with open(query_runs_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        assert len(rows) == 1
-        assert rows[0]["run_id"] == "1"
-        assert rows[0]["user_query"] == "Show me all patients"
-        assert rows[0]["sql"] == "SELECT * FROM ICSR.PATIENT"
-
-
-def test_save_full_state_json_creates_valid_json(dummy_settings, complete_workflow_state):
-    """Create state JSON file with correct structure and all fields."""
-    run_id = 1
-    save_full_state_json(complete_workflow_state, dummy_settings, run_id)
-
-    json_file = dummy_settings.paths.state_dumps_dir / "run_00001.json"
-    assert json_file.exists()
-
-    with open(json_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    # Verify structure
+    # JSON has correct structure
+    json_file = dummy_settings.paths.state_dumps_dir / f"run_{run_id}.json"
+    data = json.loads(json_file.read_text())
+    assert data["run_id"] == run_id
+    assert "timestamp" in data  # ISO format timestamp is present
     assert data["user_query"] == "Show me all patients"
-    assert isinstance(data["table_cards_with_selection"], list)
-    assert len(data["table_cards_with_selection"]) == 1
-    assert data["table_cards_with_selection"][0]["selection_reason"] == "Contains patient demographics needed for query"
-    assert isinstance(data["sql_draft"], dict)
-    assert data["sql_draft"]["sql"] == "SELECT * FROM ICSR.PATIENT"
+    assert data["config"]["target_sql_dialect"] == "sqlite"
+    assert data["drafting_and_validation"]["final_sql"] == "SELECT * FROM ICSR.PATIENT"
+    assert data["execution"]["succeeded"] is True
+
+    # CSV has matching row with all expected fields
+    csv_file = dummy_settings.paths.query_runs_file
+    with open(csv_file, encoding='utf-8') as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["run_id"] == run_id
+    assert set(rows[0].keys()) == set(RunRecord.CSV_FIELDNAMES)
 
 
-def test_save_workflow_results_increments_run_id_sequentially(dummy_settings, complete_workflow_state):
-    """Sequential calls should increment run_id correctly."""
-    import copy
+def test_save_workflow_results_appends_to_csv(dummy_settings, complete_workflow_state):
+    """Multiple saves should append to CSV without duplicate headers."""
+    save_workflow_results(complete_workflow_state, dummy_settings)
+    save_workflow_results(complete_workflow_state, dummy_settings)
 
+    lines = dummy_settings.paths.query_runs_file.read_text().strip().split("\n")
+    assert len(lines) == 3  # header + 2 rows
+
+
+def test_rebuild_csv_from_json(dummy_settings, complete_workflow_state):
+    """Should rebuild CSV index from JSON files."""
     run_id_1 = save_workflow_results(complete_workflow_state, dummy_settings)
-    assert run_id_1 == 1
+    run_id_2 = save_workflow_results(complete_workflow_state, dummy_settings)
 
-    state_copy_2 = copy.deepcopy(complete_workflow_state)
-    run_id_2 = save_workflow_results(state_copy_2, dummy_settings)
-    assert run_id_2 == 2
+    # Delete CSV, rebuild from JSON
+    dummy_settings.paths.query_runs_file.unlink()
+    count = rebuild_csv_from_json(dummy_settings)
 
-    state_copy_3 = copy.deepcopy(complete_workflow_state)
-    run_id_3 = save_workflow_results(state_copy_3, dummy_settings)
-    assert run_id_3 == 3
+    assert count == 2
+    with open(dummy_settings.paths.query_runs_file, encoding='utf-8') as f:
+        rows = list(csv.DictReader(f))
+    assert [r["run_id"] for r in rows] == sorted([run_id_1, run_id_2])
+
+
+def test_rebuild_csv_handles_empty_state(dummy_settings):
+    """Should handle missing/empty JSON directory gracefully."""
+    assert rebuild_csv_from_json(dummy_settings) == 0
+
+
+def test_persist_results_returns_run_id(dummy_settings, complete_workflow_state):
+    """Workflow node should return valid run_id."""
+    result = persist_results(complete_workflow_state, dummy_settings)
+    assert is_valid_run_id(result["run_id"])
+
+
+def test_persist_results_skips_without_sql_draft(dummy_settings, complete_workflow_state):
+    """Should skip persistence when sql_draft is missing."""
+    state = {**complete_workflow_state, "sql_draft": None}
+    assert persist_results(state, dummy_settings) == {}

@@ -1,15 +1,15 @@
 import logging
 
-from dataclasses import dataclass
 from typing import Callable
+from dataclasses import dataclass
 
 from langgraph.graph.state import CompiledStateGraph
 
-from ..config import Settings
-from ..llm_client import LLMClient, create_llm_client
-from ..state import WorkflowState
-from ..utils import get_available_schemas
-from .main_graph import build_main_graph
+from sql_query_assistant.config import Settings
+from sql_query_assistant.llm_client import LLMClient, create_llm_client
+from sql_query_assistant.state import WorkflowState
+from sql_query_assistant.utils import get_available_schemas
+from sql_query_assistant.workflow.main_graph import build_main_graph
 
 
 logger = logging.getLogger(__name__)

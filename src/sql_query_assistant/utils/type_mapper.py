@@ -3,7 +3,7 @@ import re
 from sql_query_assistant.domain import Column, TableCard
 
 
-def map_oracle_type_to_sqlite(oracle_type: str) -> str:
+def _map_oracle_type_to_sqlite(oracle_type: str) -> str:
     """
     Maps Oracle type strings to SQLite affinities.
 
@@ -63,7 +63,7 @@ def map_oracle_type_to_sqlite(oracle_type: str) -> str:
     return "TEXT"
 
 
-def transform_column_type(column: Column, source_dialect: str, target_dialect: str) -> Column:
+def _transform_column_type(column: Column, source_dialect: str, target_dialect: str) -> Column:
     """
     Transforms a column's type from source dialect to target dialect.
 
@@ -76,7 +76,7 @@ def transform_column_type(column: Column, source_dialect: str, target_dialect: s
         New Column object with transformed type
     """
     if source_dialect.lower() == "oracle" and target_dialect.lower() == "sqlite":
-        new_type = map_oracle_type_to_sqlite(column.type)
+        new_type = _map_oracle_type_to_sqlite(column.type)
         return column.model_copy(update={"type": new_type})
 
     return column
@@ -103,7 +103,7 @@ def transform_table_card_types(
     for table_card in table_cards:
         # Transform each column's type
         transformed_columns = [
-            transform_column_type(col, source_dialect, target_dialect)
+            _transform_column_type(col, source_dialect, target_dialect)
             for col in table_card.columns
         ]
 

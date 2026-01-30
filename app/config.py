@@ -32,5 +32,21 @@ div.stButton > button:first-child:hover {{
 div.stCheckbox input[type="checkbox"] {{
     accent-color: {PRIMARY_BLUE};
 }}
+.app-footer {{
+    background-color: {PRIMARY_BLUE};
+    color: #ffffff;
+    text-align: center;
+    padding: 10px 0;
+    font-size: 0.85rem;
+    margin-top: 2rem;
+    border-radius: 4px;
+}}
+.app-footer a {{
+    color: #ffffff;
+    text-decoration: none;
+}}
+.app-footer a:hover {{
+    text-decoration: underline;
+}}
 </style>
 """

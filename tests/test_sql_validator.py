@@ -5,14 +5,13 @@ from sql_query_assistant.domain import SQLDraft
 from sql_query_assistant.modules.sql_validator.nodes import validate_sql
 
 
-def _make_validator_state(sql, dialect="sqlite"):
+def _make_validator_state(sql):
     """Build a minimal workflow state for validator tests."""
     return {
         "sql_draft": SQLDraft(
             sql=sql,
             rationale="Test SQL",
             tables_used=["ICSR.PATIENT"],
-            dialect=dialect,
         ),
     }
 
@@ -94,11 +93,8 @@ def test_validate_sql_fails_on_schema_error(empty_db):
 
 
 def test_validate_sql_uses_correct_dialect(db_with_patient_table):
-    """Validator should use the dialect from sql_draft for parsing."""
-    state = _make_validator_state(
-        sql="SELECT * FROM ICSR.PATIENT LIMIT 5",
-        dialect="sqlite"
-    )
+    """Validator should use the dialect from settings for parsing."""
+    state = _make_validator_state(sql="SELECT * FROM ICSR.PATIENT LIMIT 5")
 
     result = validate_sql(state, db_with_patient_table)
 

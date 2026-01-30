@@ -26,6 +26,7 @@ from app.components import (
     render_subgraph,
 )
 
+from sql_query_assistant import __version__
 from sql_query_assistant.workflow import WorkflowRunner, NodeEvent
 
 load_dotenv(override=True)
@@ -85,6 +86,17 @@ def _render_history():
         dump_path = select_state_dump()
         if dump_path:
             render_state_dump(dump_path)
+
+
+def _render_footer():
+    """Render application footer with version and copyright."""
+    footer_html = f"""
+    <div class="app-footer">
+        <span>v{__version__}</span> |
+        <span>EMA Copyright 2025</span>
+    </div>
+    """
+    st.markdown(footer_html, unsafe_allow_html=True)
 
 
 def main():
@@ -228,6 +240,8 @@ def main():
         st.markdown("#### Input context")
         st.caption("Table cards")
         render_table_cards(table_cards, accent=PRIMARY_BLUE)
+
+    _render_footer()
 
 
 if __name__ == "__main__":

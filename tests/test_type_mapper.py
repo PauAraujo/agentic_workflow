@@ -1,10 +1,10 @@
 import pytest
 
 from sql_query_assistant.domain.table_card import Column, TableCard, TableMetadata
-from sql_query_assistant.utils import (
-    map_oracle_type_to_sqlite,
-    transform_column_type,
-    transform_table_card_types,
+from sql_query_assistant.utils import transform_table_card_types
+from sql_query_assistant.utils.type_mapper import (
+    _map_oracle_type_to_sqlite,
+    _transform_column_type,
 )
 
 ORACLE = "oracle"
@@ -42,7 +42,7 @@ def sample_table_card():
     )
 
 
-# map_oracle_type_to_sqlite tests
+# _map_oracle_type_to_sqlite tests
 @pytest.mark.parametrize(
     "oracle_type,expected_sqlite_type",
     [
@@ -72,7 +72,7 @@ def sample_table_card():
 )
 def test_oracle_to_sqlite_type_mapping(oracle_type, expected_sqlite_type):
     """Test that Oracle types are correctly mapped to SQLite types."""
-    assert map_oracle_type_to_sqlite(oracle_type) == expected_sqlite_type
+    assert _map_oracle_type_to_sqlite(oracle_type) == expected_sqlite_type
 
 
 @pytest.mark.parametrize(
@@ -85,18 +85,18 @@ def test_oracle_to_sqlite_type_mapping(oracle_type, expected_sqlite_type):
 )
 def test_oracle_mapping_case_and_whitespace(oracle_type, expected):
     """Test that type mapping handles case insensitivity and whitespace."""
-    assert map_oracle_type_to_sqlite(oracle_type) == expected
+    assert _map_oracle_type_to_sqlite(oracle_type) == expected
 
 
 def test_unknown_type_defaults_to_text():
     """Test that unknown types default to TEXT."""
-    assert map_oracle_type_to_sqlite("SOME_UNKNOWN_TYPE") == "TEXT"
+    assert _map_oracle_type_to_sqlite("SOME_UNKNOWN_TYPE") == "TEXT"
 
 
-# transform_column_type tests
+# _transform_column_type tests
 def test_transform_column_type_oracle_to_sqlite(sample_column):
     """Test that column type is transformed from Oracle to SQLite."""
-    transformed = transform_column_type(sample_column, ORACLE, SQLITE)
+    transformed = _transform_column_type(sample_column, ORACLE, SQLITE)
     assert transformed.type == "INTEGER"
     assert transformed.name == "ID"
     assert transformed.description == "Primary key"
@@ -105,7 +105,7 @@ def test_transform_column_type_oracle_to_sqlite(sample_column):
 def test_transform_column_does_not_mutate_original(sample_column):
     """Test that the original column is not mutated."""
     original_type = sample_column.type
-    transformed = transform_column_type(sample_column, ORACLE, SQLITE)
+    transformed = _transform_column_type(sample_column, ORACLE, SQLITE)
 
     assert sample_column.type == original_type
     assert transformed.type == "INTEGER"
@@ -120,7 +120,7 @@ def test_transform_column_does_not_mutate_original(sample_column):
 )
 def test_transform_column_only_for_oracle_to_sqlite(sample_column, source_db, target_db):
     """Test that transformation only occurs for Oracle → SQLite."""
-    result = transform_column_type(sample_column, source_db, target_db)
+    result = _transform_column_type(sample_column, source_db, target_db)
     assert result.type == "NUMBER(15,0)"  # Unchanged
 
 

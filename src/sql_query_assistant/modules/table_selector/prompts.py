@@ -40,7 +40,7 @@ You will receive:
 
 For each table you select, you must provide:
 1. qualified_name: The schema-qualified table name (e.g., "SCHEMA.TABLE")
-2. reason: Why this specific table is needed for the query
+2. selection_reason: Why this specific table is needed for the query
 3. key_columns: List of column names relevant to answering the query
 </task_instructions>
 
@@ -53,7 +53,7 @@ Expected JSON structure:
   "selected_tables": [
     {{
       "qualified_name": "SCHEMA.TABLE",
-      "reason": "why this table is needed",
+      "selection_reason": "why this table is needed",
       "key_columns": ["relevant", "columns"]
     }}
   ],

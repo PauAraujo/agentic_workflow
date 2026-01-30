@@ -7,6 +7,9 @@ from sql_query_assistant.domain import (
     Column,
     SQLDraft,
     TableCardWithSelection,
+    ValidationResult,
+    QueryResult,
+    RetrievalResult,
 )
 
 class DummyLLMClient:
@@ -38,7 +41,6 @@ def dummy_settings(tmp_path):
             openai_endpoint="https://example.openai.azure.com",
             api_key="dummy-key",
             api_version="2024-02-15-preview",
-            default_deployment_name="gpt-4o-mini",
             max_retries=1,
         ),
         langfuse=None,
@@ -138,13 +140,39 @@ def complete_workflow_state(sample_table_card, sample_selected_table_card):
         sql="SELECT * FROM ICSR.PATIENT",
         rationale="Simple query to return all patient records",
         tables_used=["ICSR.PATIENT"],
-        dialect="sqlite",
+    )
+
+    validation_result = ValidationResult(
+        original_sql="SELECT * FROM ICSR.PATIENT",
+        syntax_errors=[],
+        explain_errors=[],
+    )
+
+    query_result = QueryResult(
+        success=True,
+        row_count=10,
+        column_names=["SAFETY_REPORT_ID", "PATIENT_SEX_ID"],
+        rows=[{"SAFETY_REPORT_ID": 1, "PATIENT_SEX_ID": 2}],
+        execution_time_ms=15.5,
+    )
+
+    retrieval_result = RetrievalResult(
+        tables_from_search=["ICSR.PATIENT", "ICSR.DRUG", "ICSR.REACTION"],
+        tables_after_rerank=["ICSR.PATIENT"],
+        tables_from_fk_expansion=[],
+        tables_final=["ICSR.PATIENT"],
     )
 
     return {
         "user_query": "Show me all patients",
+        "retrieval_result": retrieval_result,
         "table_cards": [sample_table_card],
+        "all_table_cards": [sample_table_card],
         "table_cards_with_selection": [sample_selected_table_card],
         "sql_draft": sql_draft,
+        "validation_result": validation_result,
+        "query_result": query_result,
+        "repair_attempts": 0,
+        "repair_history": [],
     }
 

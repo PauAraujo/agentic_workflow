@@ -4,14 +4,13 @@ from typing import cast
 
 from tests.conftest import DummyLLMClient
 from sql_query_assistant.llm_client import LLMClient
-from sql_query_assistant.modules.sql_repairer.models import RawSQLRepairResponse
-from sql_query_assistant.modules.sql_repairer.nodes import repair_sql
 from sql_query_assistant.domain import SQLDraft, ValidationResult
+from sql_query_assistant.modules.sql_repairer.nodes import repair_sql
 
 
 def _make_repair_client(sql, rationale, tables_used):
     """Create a DummyLLMClient with a SQL repair response."""
-    llm_response = RawSQLRepairResponse(
+    llm_response = SQLDraft(
         sql=sql,
         rationale=rationale,
         tables_used=tables_used,
@@ -49,7 +48,6 @@ def test_repair_sql_returns_new_sql_draft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Original SQL with error",
         tables_used=["WRONG_TABLE"],
-        dialect="sqlite",
     )
 
     client = _make_repair_client(
@@ -67,11 +65,10 @@ def test_repair_sql_returns_new_sql_draft(
     assert "sql_draft" in result
     new_draft = result["sql_draft"]
 
-    # Verify the repaired SQL is different and has correct dialect
+    # Verify the repaired SQL is different
     assert new_draft.sql == "SELECT * FROM PATIENT"
     assert new_draft.rationale == "Fixed table name from WRONG_TABLE to PATIENT"
     assert new_draft.tables_used == ["PATIENT"]
-    assert new_draft.dialect == "sqlite"
 
 
 def test_repair_sql_increments_repair_attempts(
@@ -82,7 +79,6 @@ def test_repair_sql_increments_repair_attempts(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
         tables_used=["WRONG_TABLE"],
-        dialect="sqlite",
     )
 
     client = _make_repair_client(
@@ -105,12 +101,11 @@ def test_repair_sql_increments_repair_attempts(
 def test_repair_sql_tracks_repair_history(
     sample_table_card, failed_validation, dummy_settings
 ):
-    """Repairer should append new draft to repair_history."""
+    """Repairer should preserve original draft and append repair to history."""
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
         tables_used=["WRONG_TABLE"],
-        dialect="sqlite",
     )
 
     client = _make_repair_client(
@@ -128,10 +123,16 @@ def test_repair_sql_tracks_repair_history(
     assert "repair_history" in result
     history = result["repair_history"]
 
-    # Should have one entry with the repaired SQL
-    assert len(history) == 1
-    assert history[0].sql == "SELECT * FROM PATIENT"
-    assert history[0].rationale == "Fixed"
+    # Should have two entries: original draft + repaired SQL
+    assert len(history) == 2
+
+    # First entry should be the original draft (preserved for audit trail)
+    assert history[0].sql == "SELECT * FROM WRONG_TABLE"
+    assert history[0].rationale == "Error"
+
+    # Second entry should be the repaired SQL
+    assert history[1].sql == "SELECT * FROM PATIENT"
+    assert history[1].rationale == "Fixed"
 
 
 def test_repair_sql_uses_validation_errors_in_prompt(
@@ -142,7 +143,6 @@ def test_repair_sql_uses_validation_errors_in_prompt(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
         tables_used=["WRONG_TABLE"],
-        dialect="sqlite",
     )
 
     client = _make_repair_client(
@@ -171,7 +171,7 @@ def test_repair_sql_handles_missing_required_state(dummy_settings):
     """Should return empty dict when required state fields are missing."""
     # Missing validation_result
     incomplete_state = {
-        "sql_draft": SQLDraft(sql="SELECT 1", rationale="test", tables_used=[], dialect="sqlite"),
+        "sql_draft": SQLDraft(sql="SELECT 1", rationale="test", tables_used=[]),
         "user_query": "test query",
     }
 
@@ -191,7 +191,6 @@ def test_repair_sql_preserves_history_on_llm_failure(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
         tables_used=["WRONG_TABLE"],
-        dialect="sqlite",
     )
 
     # Create a client that will raise an exception
@@ -203,7 +202,7 @@ def test_repair_sql_preserves_history_on_llm_failure(
 
     # Pre-populate repair history
     existing_history = [
-        SQLDraft(sql="SELECT * FROM ATTEMPT1", rationale="First try", tables_used=["ATTEMPT1"], dialect="sqlite")
+        SQLDraft(sql="SELECT * FROM ATTEMPT1", rationale="First try", tables_used=["ATTEMPT1"])
     ]
 
     state = _make_repairer_state(

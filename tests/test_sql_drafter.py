@@ -2,14 +2,13 @@ from typing import cast
 
 from tests.conftest import DummyLLMClient
 from sql_query_assistant.llm_client import LLMClient
-from sql_query_assistant.domain import TableCardWithSelection
-from sql_query_assistant.modules.sql_drafter.models import RawSQLDraftResponse
+from sql_query_assistant.domain import TableCardWithSelection, SQLDraft
 from sql_query_assistant.modules.sql_drafter.nodes import draft_sql
 
 
 def _make_sql_drafter_client(sql, rationale, tables_used):
     """Create a DummyLLMClient with a SQL draft response."""
-    llm_response = RawSQLDraftResponse(
+    llm_response = SQLDraft(
         sql=sql,
         rationale=rationale,
         tables_used=tables_used,
