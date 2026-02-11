@@ -68,22 +68,20 @@ def log_workflow_results(result_state: WorkflowState) -> None:
 
     # Log execution results
     query_result = result_state.get("query_result")
-    if query_result:
-        if query_result.success:
-            logger.info(
-                "SQL execution succeeded: %d rows, %.2f ms, columns=%s",
-                query_result.row_count,
-                query_result.execution_time_ms or 0.0,
-                query_result.column_names,
-            )
-            # show a small sample
-            logger.debug("First rows: %s", query_result.rows[:3])
-        else:
-            if query_result.validation_failed:
-                logger.error("Execution blocked: %s", query_result.error_message)
-                logger.error("SQL draft with validation errors is available in state dump")
-            else:
-                logger.error("SQL execution failed: %s", query_result.error_message)
+    if query_result is None:
+        logger.error("Execution skipped (validation failed)")
+        logger.error("SQL draft with validation errors is available in state dump")
+    elif query_result.success:
+        logger.info(
+            "SQL execution succeeded: %d rows, %.2f ms, columns=%s",
+            query_result.row_count,
+            query_result.execution_time_ms or 0.0,
+            query_result.column_names,
+        )
+        # show a small sample
+        logger.debug("First rows: %s", query_result.rows[:3])
+    else:
+        logger.error("SQL execution failed: %s", query_result.error_message)
 
 
 def main():

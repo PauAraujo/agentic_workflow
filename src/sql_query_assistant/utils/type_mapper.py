@@ -82,7 +82,7 @@ def _transform_column_type(column: Column, source_dialect: str, target_dialect: 
     return column
 
 
-def transform_table_card_types(
+def transform_column_types(
     table_cards: list[TableCard],
     source_dialect: str,
     target_dialect: str,
@@ -101,7 +101,6 @@ def transform_table_card_types(
     new_table_cards = []
 
     for table_card in table_cards:
-        # Transform each column's type
         transformed_columns = [
             _transform_column_type(col, source_dialect, target_dialect)
             for col in table_card.columns

@@ -23,6 +23,9 @@ dependencies =  [
       "openai>=1.0.0",
   ]
 
+[project.optional-dependencies]
+oracle = ["oracledb>=2.0.0"]
+
 [dependency-groups]
 dev = [
       "boto3-stubs[essential]>=1.35.0",
@@ -31,4 +34,9 @@ dev = [
 ]
 test = [
     "pytest>=9.0.1",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "oracle: tests requiring Oracle database connection (skipped without credentials)",
 ]

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TableMetadata(BaseModel):
@@ -13,6 +13,16 @@ class TableMetadata(BaseModel):
     synonyms: list[str] = Field(default_factory=list)
     primary_key: list[str] = Field(default_factory=list)
     row_count: int | None = None
+
+    @model_validator(mode="after")
+    def _check_qualified_name_consistency(self) -> "TableMetadata":
+        expected = f"{self.schema_name}.{self.name}"
+        if self.qualified_name != expected:
+            raise ValueError(
+                f"qualified_name '{self.qualified_name}' does not match "
+                f"'{expected}' (from schema_name + name)"
+            )
+        return self
 
 
 class Column(BaseModel):

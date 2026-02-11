@@ -1,4 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field
+import logging
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from sqlglot import parse_one
+from sqlglot.errors import SqlglotError
+from sqlglot.expressions import Table
 from typing import Any, ClassVar, Literal, TYPE_CHECKING
 
 from sql_query_assistant.domain.retrieval_result import RetrievalResult
@@ -10,6 +15,34 @@ from sql_query_assistant.domain.table_selection import (
 if TYPE_CHECKING:
     from sql_query_assistant.config import Settings
     from sql_query_assistant.state import WorkflowState
+
+logger = logging.getLogger(__name__)
+
+
+def extract_tables_from_sql(sql: str, dialect: str) -> list[str]:
+    """
+    Extract schema-qualified table names from a SQL statement using sqlglot.
+
+    Uses the schema qualifier (SQLGlot's table.db) to distinguish real database tables
+    (e.g., ICSR.PATIENT) from CTE alias names which have no schema qualifier.
+
+    Args:
+        sql: The SQL statement to parse.
+        dialect: The SQL dialect (e.g., 'sqlite', 'oracle').
+
+    Returns:
+        Sorted, deduplicated list of schema-qualified table names.
+    """
+    try:
+        parsed = parse_one(sql, read=dialect)
+        tables = set()
+        for table in parsed.find_all(Table):
+            if table.db:
+                tables.add(f"{table.db}.{table.name}")
+        return sorted(tables)
+    except SqlglotError:
+        logger.warning("Failed to extract tables from SQL: %s", sql[:100])
+        return []
 
 
 class RetrievalConfigSnapshot(BaseModel):
@@ -46,7 +79,7 @@ class SQLAttempt(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     attempt: int
-    type: Literal["draft", "repair"]
+    attempt_type: Literal["draft", "repair"]
     sql: str
     rationale: str
     tables_used: list[str] = Field(default_factory=list)
@@ -60,13 +93,23 @@ class DraftingAndValidation(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     attempts: list[SQLAttempt] = Field(default_factory=list)
-    final_sql: str | None = None
-    final_validation_passed: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def final_sql(self) -> str | None:
+        """SQL from the last attempt, or None if no attempts."""
+        return self.attempts[-1].sql if self.attempts else None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def final_validation_passed(self) -> bool:
+        """Whether the last attempt passed validation."""
+        return self.attempts[-1].validation_passed if self.attempts else False
 
     @property
     def repair_count(self) -> int:
-        """Number of repair attempts (attempts with type='repair')."""
-        return sum(1 for attempt in self.attempts if attempt.type == "repair")
+        """Number of repair attempts (attempts with attempt_type='repair')."""
+        return sum(1 for attempt in self.attempts if attempt.attempt_type == "repair")
 
     @property
     def first_validation_passed(self) -> bool:
@@ -89,6 +132,12 @@ class ExecutionSummary(BaseModel):
     row_count: int | None = None
     error: str | None = None
     duration_ms: float | None = None
+
+    @model_validator(mode="after")
+    def _check_state_consistency(self) -> "ExecutionSummary":
+        if self.succeeded and not self.attempted:
+            raise ValueError("succeeded=True requires attempted=True")
+        return self
 
 
 class RunRecord(BaseModel):
@@ -196,16 +245,19 @@ class RunRecord(BaseModel):
                 )
                 for selected in table_cards_with_selection
             ],
-            rationale=state.get("selection_rationale"),
+            rationale=state.get("selection_rationale", ""),
         )
 
         # Build drafting and validation summary
-        drafting_and_validation = cls._build_drafting_and_validation(state)
+        drafting_and_validation = cls._build_drafting_and_validation(
+            state, dialect=settings.target_sql_dialect
+        )
 
         # Build execution summary
+        # query_result is None when execution was never attempted (e.g. validation failure)
         query_result = state.get("query_result")
         execution = ExecutionSummary(
-            attempted=query_result is not None and not query_result.validation_failed,
+            attempted=query_result is not None,
             succeeded=query_result.success if query_result else False,
             row_count=query_result.row_count if query_result else None,
             error=query_result.error_message if query_result else None,
@@ -224,7 +276,9 @@ class RunRecord(BaseModel):
         )
 
     @staticmethod
-    def _build_drafting_and_validation(state: "WorkflowState") -> DraftingAndValidation:
+    def _build_drafting_and_validation(
+        state: "WorkflowState", dialect: str
+    ) -> DraftingAndValidation:
         """
         Build the drafting_and_validation section with attempt history.
 
@@ -232,74 +286,86 @@ class RunRecord(BaseModel):
         - sql_draft: The current/final SQL draft
         - repair_history: [original_draft, repair1, repair2, ...] if repairs occurred, else []
         - validation_result: Validation of the FINAL sql_draft only
+        - validation_history: [validation1, validation2, ...] all validation results in order
 
         When repairs occur, repair_history[-1] == sql_draft
-
-        TODO: Intermediate validation errors are not preserved
-        Currently, only the final attempt's errors are saved
+        validation_history[i] corresponds to the validation of the i-th SQL attempt
         """
         sql_draft = state.get("sql_draft")
         repair_history = state.get("repair_history", [])
         validation_result = state.get("validation_result")
+        validation_history = state.get("validation_history", [])
 
         if not sql_draft:
-            return DraftingAndValidation(
-                attempts=[],
-                final_sql=None,
-                final_validation_passed=False,
-            )
+            return DraftingAndValidation(attempts=[])
 
         final_passed = validation_result.is_valid if validation_result else False
-        final_errors = (
-            validation_result.get_all_errors()
-            if validation_result and not final_passed
-            else []
-        )
 
         attempts = []
 
         if not repair_history:
             # Simple case: first draft passed (or failed without repair attempt)
+            # Use validation_history[0] if available, otherwise fall back to validation_result
+            errors = []
+            if validation_history:
+                errors = validation_history[0].get_all_errors()
+            elif validation_result and not final_passed:
+                errors = validation_result.get_all_errors()
+
             attempts.append(SQLAttempt(
                 attempt=1,
-                type="draft",
+                attempt_type="draft",
                 sql=sql_draft.sql,
                 rationale=sql_draft.rationale,
-                tables_used=sql_draft.tables_used,
+                tables_used=extract_tables_from_sql(sql_draft.sql, dialect),
                 validation_passed=final_passed,
-                validation_errors=final_errors,
+                validation_errors=errors,
             ))
         else:
             # Repairs occurred: repair_history = [original_draft, repair1, repair2, ...]
+            # validation_history = [validation1, validation2, ...] aligned by index
+
             # First entry is the original draft that failed validation
+            first_errors = (
+                validation_history[0].get_all_errors()
+                if validation_history
+                else []
+            )
             attempts.append(SQLAttempt(
                 attempt=1,
-                type="draft",
+                attempt_type="draft",
                 sql=repair_history[0].sql,
                 rationale=repair_history[0].rationale,
-                tables_used=repair_history[0].tables_used,
-                validation_passed=False,  # Failed validation, otherwise no repair
-                validation_errors=[],  # Intermediate errors not preserved in state
+                tables_used=extract_tables_from_sql(repair_history[0].sql, dialect),
+                validation_passed=False,
+                validation_errors=first_errors,
             ))
 
             # Subsequent entries are repair attempts
-            for i, repair_draft in enumerate(repair_history[1:], start=2):
-                is_final = (i == len(repair_history))
+            for attempt_num, repair_draft in enumerate(repair_history[1:], start=2):
+                is_final = (attempt_num == len(repair_history))
+                # validation_history index is attempt_num-1 (0-indexed)
+                validation_idx = attempt_num - 1
+                if validation_idx < len(validation_history):
+                    attempt_validation = validation_history[validation_idx]
+                    attempt_passed = attempt_validation.is_valid
+                    attempt_errors = attempt_validation.get_all_errors() if not attempt_passed else []
+                else:
+                    # Fallback: shouldn't happen, but handle gracefully
+                    attempt_passed = is_final and final_passed
+                    attempt_errors = validation_result.get_all_errors() if is_final and not final_passed else []
+
                 attempts.append(SQLAttempt(
-                    attempt=i,
-                    type="repair",
+                    attempt=attempt_num,
+                    attempt_type="repair",
                     sql=repair_draft.sql,
                     rationale=repair_draft.rationale,
-                    tables_used=repair_draft.tables_used,
-                    validation_passed=is_final and final_passed,
-                    validation_errors=final_errors if is_final and not final_passed else [],
+                    tables_used=extract_tables_from_sql(repair_draft.sql, dialect),
+                    validation_passed=attempt_passed,
+                    validation_errors=attempt_errors,
                 ))
 
-        return DraftingAndValidation(
-            attempts=attempts,
-            final_sql=sql_draft.sql,
-            final_validation_passed=final_passed,
-        )
+        return DraftingAndValidation(attempts=attempts)
 
     def to_csv_row(self) -> dict[str, Any]:
         """

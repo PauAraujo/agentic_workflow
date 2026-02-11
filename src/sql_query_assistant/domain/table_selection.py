@@ -9,13 +9,13 @@ class TableSelectionDecision(BaseModel):
     The full table schema (TableCard) is looked up separately.
     """
 
-    qualified_name: str = Field(
-        ...,
-        description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
-    )
     selection_reason: str = Field(
         ...,
         description="Why this table is needed for the query"
+    )
+    qualified_name: str = Field(
+        ...,
+        description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
     )
     key_columns: list[str] = Field(
         default_factory=list,
@@ -30,11 +30,11 @@ class TableSelectionResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    rationale: str = Field(
+        ...,
+        description="Brief explanation of the table selection strategy"
+    )
     selected_tables: list[TableSelectionDecision] = Field(
         default_factory=list,
         description="All tables selected as needed for the query"
-    )
-    rationale: str | None = Field(
-        default=None,
-        description="Brief explanation of the table selection strategy"
     )

@@ -1,5 +1,4 @@
 import logging
-import sqlite3
 
 from sqlglot import parse_one
 from sqlglot.errors import ParseError, SqlglotError
@@ -7,7 +6,7 @@ from sqlglot.errors import ParseError, SqlglotError
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import ValidationResult
 from sql_query_assistant.config import Settings
-from sql_query_assistant.utils import attach_all_schema_databases
+from sql_query_assistant.database import create_backend
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +26,34 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         settings: Settings instance for database path
 
     Returns:
-        Partial state update containing validation_result
+        Partial state update containing validation_result and validation_history
     """
     sql_draft = state.get("sql_draft")
+    validation_history = state.get("validation_history", [])
 
     if not sql_draft:
         logger.warning("No SQL draft found in state; skipping validation")
+        result = ValidationResult(
+            original_sql="",
+            syntax_errors=["No SQL draft available to validate"]
+        )
+        validation_history.append(result)
         return {
-            "validation_result": ValidationResult(
-                original_sql="",
-                syntax_errors=["No SQL draft available to validate"]
-            )
+            "validation_result": result,
+            "validation_history": validation_history,
         }
 
     sql = sql_draft.sql
     dialect = settings.target_sql_dialect
     logger.info("Validating SQL (dialect: %s): %s", dialect, sql[:100])
 
-    # Initialize result
     result = ValidationResult(original_sql=sql)
 
     # SQLGlot syntax check
     try:
         parsed_ast = parse_one(sql, read=dialect)
         logger.debug("SQLGlot syntax validation passed")
+
 
         # Security check: ensure query is read-only (SELECT or CTE)
         from sqlglot.expressions import Select, With
@@ -61,45 +64,36 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
             )
             result.syntax_errors.append(error_msg)
             logger.error(error_msg)
-            return {"validation_result": result}
+            validation_history.append(result)
+            return {"validation_result": result, "validation_history": validation_history}
 
     except ParseError as e:
         error_msg = f"SQL syntax error: {str(e)}"
         result.syntax_errors.append(error_msg)
         logger.error(error_msg)
-        return {"validation_result": result}
+        validation_history.append(result)
+        return {"validation_result": result, "validation_history": validation_history}
     except SqlglotError as e:
         error_msg = f"SQLGlot error: {str(e)}"
         result.syntax_errors.append(error_msg)
         logger.error(error_msg)
-        return {"validation_result": result}
+        validation_history.append(result)
+        return {"validation_result": result, "validation_history": validation_history}
 
     # EXPLAIN validation (semantic check against database)
     try:
-        # Connect to in-memory database and auto-attach all schema databases
-        # Convention: DB filename = schema name (e.g., ICSR.db → schema ICSR)
-        with sqlite3.connect(":memory:") as conn:
-            cursor = conn.cursor()
+        backend = create_backend(settings)
+        backend.validate_query(sql)
 
-            # Even though EXPLAIN shouldn't modify data, we enforce
-            # read-only mode as a defense-in-depth measure
-            cursor.execute("PRAGMA query_only = ON")
-            logger.debug("Enabled read-only mode for validation")
+        # If we get here, the query is valid (no errors added)
+        logger.info("SQL validation passed all checks")
 
-            # Auto-discover and attach all .db files from schemas_dir directory
-            attach_all_schema_databases(cursor, settings)
-
-            # Use EXPLAIN QUERY PLAN for dry-run validation
-            explain_sql = f"EXPLAIN QUERY PLAN {sql}"
-            cursor.execute(explain_sql)
-
-            # If we get here, the query is valid (no errors added)
-            logger.info("SQL validation passed all checks")
-
-    except sqlite3.Error as e:
+    except Exception as e:
         error_msg = f"EXPLAIN validation error: {str(e)}"
         result.explain_errors.append(error_msg)
         logger.error(error_msg)
-        return {"validation_result": result}
+        validation_history.append(result)
+        return {"validation_result": result, "validation_history": validation_history}
 
-    return {"validation_result": result}
+    validation_history.append(result)
+    return {"validation_result": result, "validation_history": validation_history}

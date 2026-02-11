@@ -14,7 +14,7 @@ class WorkflowState(TypedDict, total=False):
     """
     Global state shared across the full text-to-SQL workflow.
 
-    Input values (user_query, table_cards) are provided by the caller. Each module
+    Input values (user_query, allowed_schemas) are provided by the caller. Each module
     writes its outputs into the same state as the pipeline progresses.
     """
 
@@ -36,10 +36,11 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Validator output
     validation_result: ValidationResult
+    validation_history: list[ValidationResult]  # all validation results (for preserving intermediate errors)
 
     # SQL Repairer tracking
     repair_attempts: int
-    repair_history: list[SQLDraft] # populated ONLY when repair occurs
+    repair_history: list[SQLDraft]  # populated only when repair occurs
 
     # SQL Executor output
     query_result: QueryResult

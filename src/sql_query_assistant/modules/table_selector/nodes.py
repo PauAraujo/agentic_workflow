@@ -4,7 +4,7 @@ import logging
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import Settings, ModelConfig
-from sql_query_assistant.prompting import prompt_factory
+from sql_query_assistant.prompting import build_chat_prompt
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import TableCard, TableCardWithSelection, TableSelectionResponse
 
@@ -71,10 +71,12 @@ def select_tables(
         settings: Settings instance containing table selector configuration
 
     Returns:
-        Partial state update containing table_cards_with_selection (list of TableCardWithSelection).
+        Partial state update containing table_cards_with_selection (list of TableCardWithSelection)
+        and selection_rationale (str).
 
     Raises:
-        ValueError: If user_query is missing, retriever returned no tables, or LLM returns invalid results.
+        ValueError: If user_query is missing, retriever returned no tables,
+            all_table_cards is missing from state, or LLM returns an empty selection.
     """
     user_query = state.get("user_query", "")
     retrieved_cards = state.get("table_cards", [])
@@ -134,11 +136,11 @@ def select_tables(
         _format_table_card_for_selector(card, noise_value_maps) for card in other_available_tables
     )
 
-    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
     prompt_messages = prompt_template.format_messages(
         user_query=user_query,
         retrieved_tables=retrieved_summaries,
-        other_tables=other_summaries if other_summaries else "(none - all core tables already retrieved)",
+        other_tables=other_summaries if other_summaries else "(none)",
     )
 
     # Call LLM with structured output (let exceptions propagate)
@@ -152,7 +154,6 @@ def select_tables(
     selected_cards: list[TableCardWithSelection] = []
     selected_names: set[str] = set()
 
-    # Process all selected tables (unified list)
     for table_selection in llm_response.selected_tables:
         # Skip duplicates
         if table_selection.qualified_name in selected_names:

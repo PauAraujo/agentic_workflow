@@ -4,7 +4,7 @@ import logging
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import ModelConfig
-from sql_query_assistant.prompting import prompt_factory
+from sql_query_assistant.prompting import build_chat_prompt
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import SQLDraft
 
@@ -30,7 +30,7 @@ def draft_sql(
         Partial state update containing the SQLDraft.
     """
     logger.info("Drafting SQL query (target dialect: %s)", target_dialect)
-    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
 
     # Extract TableCards from TableCardWithSelection wrappers
     # The selection metadata (reason, key_columns) is preserved in state for auditability

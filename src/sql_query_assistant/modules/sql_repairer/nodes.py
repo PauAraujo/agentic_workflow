@@ -5,7 +5,7 @@ from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import SQLDraft
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import ModelConfig
-from sql_query_assistant.prompting import prompt_factory
+from sql_query_assistant.prompting import build_chat_prompt
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -30,12 +30,13 @@ def repair_sql(
 
     Returns:
         Partial state update with repaired sql_draft, incremented repair_attempts,
-        and updated repair_history
+        and updated repair_history. On LLM failure, sql_draft is omitted (unchanged).
     """
     validation_result = state.get("validation_result")
     sql_draft = state.get("sql_draft")
     user_query = state.get("user_query")
-    table_cards = state.get("table_cards")
+    table_cards_with_selection = state.get("table_cards_with_selection", [])
+    table_cards = [tc.table_card for tc in table_cards_with_selection]
     repair_attempts = state.get("repair_attempts", 0)
     repair_history = state.get("repair_history", [])
 
@@ -43,28 +44,22 @@ def repair_sql(
         logger.error("Missing required state for repair: validation_result, sql_draft, or user_query")
         return {}
 
-    # Increment repair attempts
     repair_attempts += 1
     logger.info("SQL repair attempt %d/%d (target dialect: %s)", repair_attempts, max_repair_attempts, target_dialect)
 
-    # Get validation errors
-    validation_errors = validation_result.get_error_summary()
-    logger.debug("Validation errors to fix: %s", validation_errors)
+    error_summary = validation_result.get_error_summary()
+    logger.debug("Validation errors to fix: %s", error_summary)
 
-    # Build prompt using prompt_factory
-    prompt_template = prompt_factory(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
 
     prompt_messages = prompt_template.format_messages(
         target_dialect=target_dialect,
-        original_sql=sql_draft.sql,
-        validation_errors=validation_errors,
+        failed_sql=sql_draft.sql,
+        validation_errors=error_summary,
         user_query=user_query,
         table_cards=json.dumps([tc.model_dump() for tc in table_cards], indent=2),
-        repair_attempt=repair_attempts,
-        max_attempts=max_repair_attempts
     )
 
-    # Call LLM with structured output
     try:
         repaired_draft = client.call_llm(
             messages=prompt_messages,

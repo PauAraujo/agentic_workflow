@@ -1,4 +1,3 @@
 from sql_query_assistant.utils.loaders import load_table_cards
-from sql_query_assistant.utils.database import attach_all_schema_databases
+from sql_query_assistant.utils.type_mapper import transform_column_types
 from sql_query_assistant.utils.schema_discovery import get_available_schemas
-from sql_query_assistant.utils.type_mapper import transform_table_card_types

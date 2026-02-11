@@ -2,13 +2,14 @@ import boto3
 import logging
 
 from botocore.config import Config
-from pydantic import BaseModel
 from typing import Sequence, Type, TypeVar
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
-from langchain_core.messages import BaseMessage
-from langchain_openai import AzureChatOpenAI
 from langchain_aws import ChatBedrock
+from langchain_openai import AzureChatOpenAI
+from langchain_core.messages import BaseMessage
+from langchain_core.exceptions import OutputParserException
+from pydantic import BaseModel, ValidationError
 
 from sql_query_assistant.config import Settings, ModelConfig
 
@@ -41,9 +42,9 @@ class LLMClient:
         """
         return cls(settings=settings, langfuse_handler=langfuse_handler)
 
-    def get_llm(self, model_config: ModelConfig):
+    def create_llm(self, model_config: ModelConfig):
         """
-        Get an LLM instance based on provider specified in ModelConfig.
+        Create an LLM instance based on provider specified in ModelConfig.
 
         Args:
             model_config: Configuration specifying provider, model, and temperature
@@ -52,9 +53,9 @@ class LLMClient:
             AzureChatOpenAI or ChatBedrock instance
         """
         if model_config.provider == "azure":
-            return self._get_azure_llm(model_config)
+            return self._create_azure_llm(model_config)
         elif model_config.provider == "aws":
-            return self._get_aws_llm(model_config)
+            return self._create_aws_llm(model_config)
         else:
             raise ValueError(f"Unsupported provider: {model_config.provider}")
 
@@ -63,24 +64,39 @@ class LLMClient:
         messages: Sequence[BaseMessage],
         schema: Type[T],
         model_config: ModelConfig,
+        max_retries: int = 3,
     ) -> T:
         """
-        Call the LLM with structured output validation.
+        Call the LLM with structured output validation and automatic retries.
+
+        Retries on schema validation errors (malformed LLM JSON responses).
+        Non-schema errors propagate immediately.
 
         Args:
             messages: Sequence of messages to send to the LLM
             schema: Pydantic model class defining the expected output schema
             model_config: Configuration for provider, model, and temperature
+            max_retries: Maximum number of attempts on schema validation errors
 
         Returns:
             Parsed LLM response conforming to the provided schema
         """
-        llm = self.get_llm(model_config)
+        llm = self.create_llm(model_config)
         structured_llm = llm.with_structured_output(schema=schema, method="function_calling")
+        retrying_llm = structured_llm.with_retry(
+            retry_if_exception_type=(ValidationError, OutputParserException),
+            stop_after_attempt=max_retries,
+            wait_exponential_jitter=True,
+        )
 
-        return structured_llm.invoke(messages)
+        logger.debug(
+            "Calling LLM with schema=%s, max_retries=%d",
+            schema.__name__,
+            max_retries,
+        )
+        return retrying_llm.invoke(messages)
 
-    def _get_azure_llm(self, model_config: ModelConfig) -> AzureChatOpenAI:
+    def _create_azure_llm(self, model_config: ModelConfig) -> AzureChatOpenAI:
         """Create an AzureChatOpenAI instance with specified configuration."""
         callbacks = [self.langfuse_handler] if self.langfuse_handler else None
 
@@ -137,7 +153,7 @@ class LLMClient:
 
         return None
 
-    def _get_aws_llm(self, model_config: ModelConfig) -> ChatBedrock:
+    def _create_aws_llm(self, model_config: ModelConfig) -> ChatBedrock:
         """Create a ChatBedrock instance with specified configuration."""
         if not self.settings.aws:
             raise ValueError(

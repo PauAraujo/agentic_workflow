@@ -75,7 +75,69 @@ class EnvBaseSettings(BaseSettings):
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
+
+
+class DatabaseSettings(EnvBaseSettings):
+    """
+    Settings for database backend selection and Oracle connection.
+
+    Defaults to SQLite for local development. Set DB_TYPE=oracle with
+    Oracle credentials for production use.
+    """
+    db_type: Literal["sqlite", "oracle"] = Field(
+        validation_alias="DB_TYPE",
+        default="sqlite",
+        description="Database backend: 'sqlite' (local .db files) or 'oracle' (direct connection)"
+    )
+    # Oracle-specific (only required when db_type = "oracle")
+    oracle_host: str | None = Field(
+        validation_alias="DB_HOST",
+        default=None,
+        description="Oracle database hostname"
+    )
+    oracle_port: int = Field(
+        validation_alias="DB_PORT",
+        default=1521,
+        description="Oracle database port"
+    )
+    oracle_service: str | None = Field(
+        validation_alias="DB_SERVICE",
+        default=None,
+        description="Oracle service name"
+    )
+    oracle_user: str | None = Field(
+        validation_alias="DB_USER", # ICSR
+        default=None,
+        description="Oracle database username"
+    )
+    oracle_password: str | None = Field(
+        validation_alias="DB_PASSWORD",
+        default=None,
+        description="Oracle database password"
+    )
+
+    @model_validator(mode="after")
+    def validate_oracle_credentials(self) -> "DatabaseSettings":
+        """Ensure Oracle credentials are provided when db_type is 'oracle'"""
+        if self.db_type == "oracle":
+            missing = []
+            if not self.oracle_host:
+                missing.append("DB_HOST")
+            if not self.oracle_service:
+                missing.append("DB_SERVICE")
+            if not self.oracle_user:
+                missing.append("DB_USER")
+            if not self.oracle_password:
+                missing.append("DB_PASSWORD")
+            if missing:
+                raise ValueError(
+                    f"Oracle credentials required when DB_TYPE=oracle. "
+                    f"Missing: {', '.join(missing)}"
+                )
+        return self
+
 
 class AzureSettings(EnvBaseSettings):
     """
@@ -178,7 +240,6 @@ class AzureSearchSettings(EnvBaseSettings):
         default=False,
         description="Include reverse FK relationships (tables that reference the core tables)"
     )
-    # Embedding configuration for hybrid search
     embedding_deployment: str = Field(
         validation_alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT",
         default="text-embedding-3-small",
@@ -320,6 +381,9 @@ class Settings(EnvBaseSettings):
     azure_search: AzureSearchSettings | None = None
     table_selector: TableSelectorSettings = Field(default_factory=TableSelectorSettings)
 
+    # Database backend
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
     # Paths and workflow config
     paths: PathSettings = Field(default_factory=PathSettings)
     target_sql_dialect: str = Field(
@@ -329,7 +393,7 @@ class Settings(EnvBaseSettings):
     )
     max_repair_attempts: int = Field(
         validation_alias="MAX_REPAIR_ATTEMPTS",
-        default=1,
+        default=3,
         description="Maximum number of SQL repair attempts when validation fails"
     )
 
@@ -374,21 +438,21 @@ class Settings(EnvBaseSettings):
         Example: DRAFTER_MODEL_PROVIDER=azure, DRAFTER_MODEL_NAME=gpt-4o
         """
 
+        def _get_env_stripped(key: str):
+            val = os.getenv(key)
+            if val is None:
+                return None
+            stripped = val.strip()
+            return stripped if stripped else None
+
         for agent_name in ["drafter", "repairer", "table_selector"]:
             provider_key = f"{agent_name.upper()}_MODEL_PROVIDER"
             model_key = f"{agent_name.upper()}_MODEL_NAME"
             temp_key = f"{agent_name.upper()}_TEMPERATURE"
 
-            def _clean(key: str):
-                val = os.getenv(key)
-                if val is None:
-                    return None
-                stripped = val.strip()
-                return stripped if stripped else None
-
-            provider = _clean(provider_key)
-            model_name = _clean(model_key)
-            temperature = _clean(temp_key)
+            provider = _get_env_stripped(provider_key)
+            model_name = _get_env_stripped(model_key)
+            temperature = _get_env_stripped(temp_key)
 
             if provider or model_name or temperature:
                 # Build config from env vars

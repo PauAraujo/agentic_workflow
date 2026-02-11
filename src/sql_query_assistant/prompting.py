@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-def prompt_factory(system_prompt: str, user_prompt: str) -> ChatPromptTemplate:
+def build_chat_prompt(system_prompt: str, user_prompt: str) -> ChatPromptTemplate:
     """
     Construct a ChatPromptTemplate with system and human messages.
 

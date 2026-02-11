@@ -1,12 +1,9 @@
-import re
 import logging
 
 from sql_query_assistant.config import Settings
+from sql_query_assistant.database import VALID_SCHEMA_NAME_PATTERN
 
 logger = logging.getLogger(__name__)
-
-# Valid schema name pattern (same as database.py)
-VALID_SCHEMA_NAME_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 
 
 def get_available_schemas(settings: Settings) -> dict[str, int]:

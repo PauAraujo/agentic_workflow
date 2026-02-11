@@ -4,7 +4,6 @@ from functools import partial
 from langgraph.graph import END, StateGraph
 
 from sql_query_assistant.config import Settings
-from sql_query_assistant.domain import QueryResult
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.modules.table_card_retriever import retrieve_relevant_table_cards
@@ -21,13 +20,17 @@ logger = logging.getLogger(__name__)
 
 def validation_failed_node(state: WorkflowState) -> WorkflowState:
     """
-    Node that surfaces validation failure without executing SQL.
+    Terminal node when validation fails and repair attempts are exhausted.
+
+    Does not set query_result, since a None query_result in state means
+    execution was never attempted. The failure details are already
+    captured in validation_result.
 
     Args:
         state: Current workflow state containing validation_result.
 
     Returns:
-        Partial state update with failed QueryResult.
+        Empty state update (no query_result).
     """
     validation_result = state.get("validation_result")
     error_summary = (
@@ -35,14 +38,8 @@ def validation_failed_node(state: WorkflowState) -> WorkflowState:
         if validation_result
         else "Validation failed (no details available)"
     )
-    return {
-        "query_result": QueryResult(
-            success=False,
-            row_count=0,
-            error_message=f"Validation failed: {error_summary}",
-            validation_failed=True,
-        )
-    }
+    logger.warning("Validation failed (execution skipped): %s", error_summary)
+    return {}
 
 
 def route_after_validation(state: WorkflowState, settings: Settings) -> str:

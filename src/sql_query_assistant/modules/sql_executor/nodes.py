@@ -1,16 +1,14 @@
-import time
 import logging
-import sqlite3
 
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import QueryResult
 from sql_query_assistant.config import Settings
-from sql_query_assistant.utils import attach_all_schema_databases
+from sql_query_assistant.database import create_backend
 
 logger = logging.getLogger(__name__)
 
 
-def _create_error_result(error_message: str) -> dict:
+def _make_failed_query_state(error_message: str) -> dict:
     """
     Create a failed query result with error message.
 
@@ -33,39 +31,18 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
     """
     Execute the generated SQL query against the database.
 
-    If validation was performed, use the validated/converted SQL.
-    Otherwise, fall back to manual conversion.
-
     Args:
-        state: Current workflow state containing sql_draft and optional validation_result
-        settings: Settings instance for database path
+        state: Current workflow state containing sql_draft
+        settings: Settings instance for database configuration
 
     Returns:
         Partial state update containing query_result
     """
     sql_draft = state.get("sql_draft")
-    validation_result = state.get("validation_result")
 
     if not sql_draft:
         logger.warning("No SQL draft found in state; skipping execution")
-        return _create_error_result("No SQL draft available to execute")
-
-    # Block execution if validation failed (after repair attempts exhausted)
-    if validation_result and not validation_result.is_valid:
-        repair_attempts = state.get("repair_attempts", 0)
-        logger.error(
-            "Execution blocked due to validation failures after %d repair attempts: %s",
-            repair_attempts,
-            validation_result.get_error_summary()
-        )
-        return {
-            "query_result": QueryResult(
-                success=False,
-                row_count=0,
-                error_message=f"Validation failed: {validation_result.get_error_summary()}",
-                validation_failed=True
-            )
-        }
+        return _make_failed_query_state("No SQL draft available to execute")
 
     executable_sql = sql_draft.sql
 
@@ -73,25 +50,9 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
     logger.debug("SQL (dialect: %s): %s", settings.target_sql_dialect, executable_sql[:100])
 
     try:
-        # Connect to in-memory database and auto-attach all schema databases
-        # Convention: DB filename = schema name (e.g., ICSR.db → schema ICSR)
-        with sqlite3.connect(":memory:") as conn:
-            conn.row_factory = sqlite3.Row  # enable column name access
-            cursor = conn.cursor()
-
-            # Auto-discover and attach all .db files from schemas_dir directory
-            attach_all_schema_databases(cursor, settings)
-
-            start_time = time.perf_counter()
-            cursor.execute(executable_sql)
-            execution_time_ms = (time.perf_counter() - start_time) * 1000
-
-            rows = cursor.fetchall()
-            column_names = [description[0] for description in cursor.description] if cursor.description else []
-
-            # Convert rows to list of dicts
-            result_rows = [dict(row) for row in rows]
-            row_count = len(result_rows)
+        backend = create_backend(settings)
+        result_rows, column_names, execution_time_ms = backend.execute_query(executable_sql)
+        row_count = len(result_rows)
 
         logger.info("Query executed successfully: %d rows returned in %.2fms", row_count, execution_time_ms)
 
@@ -105,10 +66,6 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
             )
         }
 
-    except sqlite3.Error as e:
-        logger.error("SQL execution failed: %s", str(e))
-        return _create_error_result(f"SQL execution error: {str(e)}")
-
     except Exception as e:
-        logger.exception("Unexpected error during SQL execution")
-        return _create_error_result(f"Unexpected error: {str(e)}")
+        logger.error("SQL execution failed: %s", str(e))
+        return _make_failed_query_state(f"SQL execution error: {str(e)}")

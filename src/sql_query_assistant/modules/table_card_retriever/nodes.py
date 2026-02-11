@@ -13,18 +13,12 @@ from openai import AzureOpenAI
 from sql_query_assistant.config import Settings
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import TableCard, RetrievalResult
+from sql_query_assistant.database import validate_schema_name
 from sql_query_assistant.utils.loaders import load_table_cards
-from sql_query_assistant.utils.type_mapper import transform_table_card_types
+from sql_query_assistant.utils.type_mapper import transform_column_types
 from .models import TableCardSearchResult
 
 logger = logging.getLogger(__name__)
-
-# State keys
-STATE_KEY_USER_QUERY = "user_query"
-STATE_KEY_TABLE_CARDS = "table_cards"
-STATE_KEY_ALL_TABLE_CARDS = "all_table_cards"
-STATE_KEY_ALLOWED_SCHEMAS = "allowed_schemas"
-STATE_KEY_RETRIEVAL_RESULT = "retrieval_result"
 
 # Azure Search field names
 FIELD_ID = "id"
@@ -247,12 +241,12 @@ def retrieve_relevant_table_cards(
     Raises:
         ValueError: If Azure Search is not configured
     """
-    user_query = state.get(STATE_KEY_USER_QUERY, "")
-    allowed_schemas = state.get(STATE_KEY_ALLOWED_SCHEMAS)
+    user_query = state.get("user_query", "")
+    allowed_schemas = state.get("allowed_schemas")
 
     if not user_query:
         logger.warning("No user query provided; cannot retrieve table cards")
-        return {STATE_KEY_TABLE_CARDS: []}
+        return {"table_cards": []}
 
     if not settings.azure_search:
         raise ValueError(
@@ -263,7 +257,7 @@ def retrieve_relevant_table_cards(
     logger.info(f"Retrieving relevant table cards for query: '{user_query}'")
 
     # Initialize Azure Search client
-    search_client = SearchClient( # TODO: SearchClient currently not cached
+    search_client = SearchClient(
         endpoint=str(settings.azure_search.endpoint),
         index_name=settings.azure_search.table_cards_index_name,
         credential=AzureKeyCredential(settings.azure_search.query_key)
@@ -272,6 +266,9 @@ def retrieve_relevant_table_cards(
     # Build OData filter for schema filtering
     schema_filter = None
     if allowed_schemas:
+        # Validate schema names before interpolating into OData filter string
+        for schema in allowed_schemas:
+            validate_schema_name(schema)
         # Azure Search OData syntax: schema_name eq 'ICSR' or schema_name eq 'ICSR_LOOKUP'
         filter_parts = [f"schema_name eq '{schema}'" for schema in allowed_schemas]
         schema_filter = " or ".join(filter_parts)
@@ -331,7 +328,6 @@ def retrieve_relevant_table_cards(
         if not search_results:
             logger.error(
                 "Azure Search returned zero results. "
-                "This likely indicates an infrastructure problem. "
                 "Diagnostic context: "
                 f"query='{user_query}', "
                 f"filter={schema_filter or 'none'}, "
@@ -340,8 +336,10 @@ def retrieve_relevant_table_cards(
                 f"semantic_config='{SEMANTIC_CONFIG_NAME}'"
             )
             raise RuntimeError(
-                f"Azure Search returned no results for query: '{user_query}'. "
-                "Check index configuration, embeddings, and semantic reranker setup."
+                f"No relevant tables found for query: '{user_query}'. "
+                "This is unusual — Azure Search normally returns results for any query. "
+                f"Possible causes: {'schema filter may be too restrictive (' + schema_filter + '), ' if schema_filter else ''}"
+                "index may be empty or misconfigured, or embeddings may not be deployed."
             )
 
         logger.info(f"Retrieved {len(search_results)} relevant table cards from Azure Search")
@@ -353,7 +351,7 @@ def retrieve_relevant_table_cards(
         # Search results are already schema-filtered by Azure Search above
         all_table_cards = load_table_cards(settings)
         if settings.target_sql_dialect.lower() == "sqlite":
-            all_table_cards = transform_table_card_types(all_table_cards, "oracle", "sqlite")
+            all_table_cards = transform_column_types(all_table_cards, "oracle", "sqlite")
 
         # Create a mapping from qualified name to table card
         table_cards_by_qualified_name = {
@@ -406,9 +404,9 @@ def retrieve_relevant_table_cards(
         )
 
         return {
-            STATE_KEY_RETRIEVAL_RESULT: retrieval_result,
-            STATE_KEY_TABLE_CARDS: expanded_cards,
-            STATE_KEY_ALL_TABLE_CARDS: all_table_cards,
+            "retrieval_result": retrieval_result,
+            "table_cards": expanded_cards,
+            "all_table_cards": all_table_cards,
         }
 
     except Exception as e:
