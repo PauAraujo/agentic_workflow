@@ -284,10 +284,9 @@ class AwsSettings(EnvBaseSettings):
         description="AWS region for Bedrock service",
         default="eu-central-1",
     )
-    profile: str | None = Field(
+    profile: str = Field(
         validation_alias="AWS_PROFILE",
         description="AWS profile name from ~/.aws/credentials",
-        default=None,
     )
     max_retries: int = Field(
         validation_alias="AWS_BEDROCK_MAX_RETRIES",
@@ -428,7 +427,7 @@ class Settings(EnvBaseSettings):
             """Read an env var with .env fallback; returns None if missing or blank."""
             val = os.getenv(key) # check real env vars first
             if val is None:
-                val = _dotenv_values.get(key) # fall back to .env file
+                val = _dotenv_values.get(key) # fallback to .env file
             if val is None:
                 return None
             # Trim whitespace, avoids treating blank values as valid overrides
