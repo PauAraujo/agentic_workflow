@@ -170,10 +170,11 @@ def main():
 
                         steps_placeholder.markdown("  \n".join(steps_md))
 
+                    settings.persist_enabled = enable_persistence
+
                     runner = WorkflowRunner(settings)
                     final_state = runner.run(
                         query=query.strip(),
-                        enable_persistence=enable_persistence,
                         on_progress=handle_progress,
                     )
 

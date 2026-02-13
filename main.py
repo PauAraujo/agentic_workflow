@@ -105,11 +105,12 @@ def main():
             logger.error("No query provided")
             sys.exit(1)
 
+        settings.persist_enabled = not args.no_persist
+
         runner = WorkflowRunner(settings)
         result_state = runner.run(
             query=user_query,
             schemas=args.schemas,
-            enable_persistence=not args.no_persist,
         )
 
         log_workflow_results(result_state)

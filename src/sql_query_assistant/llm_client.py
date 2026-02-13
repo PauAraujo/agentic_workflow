@@ -3,13 +3,13 @@ import logging
 
 from botocore.config import Config
 from typing import Sequence, Type, TypeVar
+from pydantic import BaseModel, ValidationError
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 from langchain_aws import ChatBedrock
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import BaseMessage
 from langchain_core.exceptions import OutputParserException
-from pydantic import BaseModel, ValidationError
 
 from sql_query_assistant.config import Settings, ModelConfig
 

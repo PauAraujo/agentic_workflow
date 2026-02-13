@@ -1,6 +1,5 @@
 from pathlib import Path
 
-# Path configuration
 ROOT = Path(__file__).resolve().parent.parent
 
 IMAGES_DIR = ROOT / "app" / "images"

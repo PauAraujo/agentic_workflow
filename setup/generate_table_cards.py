@@ -78,7 +78,6 @@ KEEP_TABLES = {
 }
 
 SKIP_TABLE_SUFFIXES = (
-    "_RECODE",     # Recoding byproduct tables
     "_TMP",        # Temporary tables
     "_HIST",       # Historical audit tables (ICSR_EMA only)
     "_LOG",        # Logging tables

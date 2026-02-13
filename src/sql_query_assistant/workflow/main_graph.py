@@ -51,21 +51,21 @@ def route_after_validation(state: WorkflowState, settings: Settings) -> str:
         settings: Settings instance containing max_repair_attempts configuration.
 
     Returns:
-        Next node name:
-        - "sql_executor" if validation passed
-        - "sql_repairer" if validation failed and can retry
-        - "validation_failed" if validation failed and max retries exceeded
+        Routing decision:
+        - "passed" if validation succeeded
+        - "retry" if validation failed and repair attempts remain
+        - "exhausted" if validation failed and max retries exceeded
     """
     validation_result = state.get("validation_result")
     repair_attempts = state.get("repair_attempts", 0)
 
     if not validation_result:
         logger.warning("No validation result found; treating as failure")
-        return "validation_failed"
+        return "exhausted"
 
     if validation_result.is_valid:
         logger.info("Validation passed; proceeding to executor")
-        return "sql_executor"
+        return "passed"
 
     # Validation failed
     if repair_attempts >= settings.max_repair_attempts:
@@ -73,17 +73,16 @@ def route_after_validation(state: WorkflowState, settings: Settings) -> str:
             "Validation failed after %d repair attempts; reporting failure",
             repair_attempts
         )
-        return "validation_failed"
+        return "exhausted"
 
     logger.info("Validation failed; attempting repair (attempt %d/%d)",
                repair_attempts + 1, settings.max_repair_attempts)
-    return "sql_repairer"
+    return "retry"
 
 
 def build_main_graph(
     client: LLMClient,
     settings: Settings,
-    enable_persistence: bool = True,
 ):
     """
     Compose the main graph with per-agent model configuration.
@@ -96,7 +95,7 @@ def build_main_graph(
                      -> (if invalid and attempts < max) sql_repairer
                      -> (if invalid and attempts >= max) validation_failed (no execution)
     5. sql_repairer -> sql_validator (retry validation)
-    6. sql_executor/validation_failed -> persistence (optional) -> END
+    6. sql_executor/validation_failed -> persistence -> END
 
     Logic:
         - The RAG Retriever uses Azure AI Search to select relevant table cards
@@ -105,11 +104,11 @@ def build_main_graph(
         - The Validator checks syntax and semantics
         - If validation fails, the Repairer attempts to fix the SQL based on errors
         - The loop (Repair -> Validate) continues until the query passes or max_retries is hit
+        - Persistence is controlled by settings.persist_enabled (no-op when disabled)
 
     Args:
         client: LLM client supporting multiple providers
         settings: Settings instance with agent configurations
-        enable_persistence: Whether to include persistence in the workflow
 
     Returns:
         The executable LangGraph workflow (compiled StateGraph) ready for invocation
@@ -179,23 +178,19 @@ def build_main_graph(
         "sql_validator",
         route_func,
         {
-            "sql_executor": "sql_executor",
-            "sql_repairer": "sql_repairer",
-            "validation_failed": "validation_failed",
+            "passed": "sql_executor",
+            "retry": "sql_repairer",
+            "exhausted": "validation_failed",
         }
     )
 
     # After repair, go back to validation
     workflow.add_edge("sql_repairer", "sql_validator")
 
-    if enable_persistence:
-        persistence_node = partial(persist_results, settings=settings)
-        workflow.add_node("persistence", persistence_node)
-        workflow.add_edge("sql_executor", "persistence")
-        workflow.add_edge("validation_failed", "persistence")
-        workflow.add_edge("persistence", END)
-    else:
-        workflow.add_edge("sql_executor", END)
-        workflow.add_edge("validation_failed", END)
+    persistence_node = partial(persist_results, settings=settings)
+    workflow.add_node("persistence", persistence_node)
+    workflow.add_edge("sql_executor", "persistence")
+    workflow.add_edge("validation_failed", "persistence")
+    workflow.add_edge("persistence", END)
 
     return workflow.compile()

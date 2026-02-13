@@ -1,5 +1,6 @@
 import logging
 
+from openai import AzureOpenAI
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.models import (
@@ -8,7 +9,6 @@ from azure.search.documents.models import (
     QueryAnswerType,
     VectorizedQuery,
 )
-from openai import AzureOpenAI
 
 from sql_query_assistant.config import Settings
 from sql_query_assistant.state import WorkflowState

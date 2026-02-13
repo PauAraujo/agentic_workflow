@@ -18,6 +18,10 @@ def persist_results(state: WorkflowState, settings: Settings) -> WorkflowState:
     Returns:
         Partial state update with run_id if persistence succeeded, or empty dict if skipped.
     """
+    if not settings.persist_enabled:
+        logger.info("Persistence disabled, skipping")
+        return {}
+
     logger.info("Persisting workflow results")
 
     sql_draft = state.get("sql_draft")

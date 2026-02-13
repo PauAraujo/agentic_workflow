@@ -386,15 +386,19 @@ class Settings(EnvBaseSettings):
 
     # Paths and workflow config
     paths: PathSettings = Field(default_factory=PathSettings)
-    target_sql_dialect: str = Field(
+    target_sql_dialect: Literal["sqlite", "oracle"] = Field(
         validation_alias="TARGET_SQL_DIALECT",
         default="sqlite",
-        description="Target SQL dialect for query generation (e.g., 'sqlite', 'oracle', 'postgres')"
+        description="Target SQL dialect for query generation"
     )
     max_repair_attempts: int = Field(
         validation_alias="MAX_REPAIR_ATTEMPTS",
         default=3,
         description="Maximum number of SQL repair attempts when validation fails"
+    )
+    persist_enabled: bool = Field(
+        default=True,
+        description="Whether to persist workflow results to disk"
     )
 
     # Agent-specific model configuration

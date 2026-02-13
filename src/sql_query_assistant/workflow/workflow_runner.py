@@ -54,6 +54,7 @@ class WorkflowRunner:
         """
         self.settings = settings
         self._llm_client: LLMClient | None = None
+        self._graph: CompiledStateGraph | None = None
 
     @property
     def llm_client(self) -> LLMClient:
@@ -62,11 +63,17 @@ class WorkflowRunner:
             self._llm_client = create_llm_client(self.settings)
         return self._llm_client
 
+    @property
+    def graph(self) -> CompiledStateGraph:
+        """Get or compile the workflow graph (cached)."""
+        if self._graph is None:
+            self._graph = build_main_graph(self.llm_client, self.settings)
+        return self._graph
+
     def run(
         self,
         query: str,
         schemas: list[str] | None = None,
-        enable_persistence: bool = True,
         on_progress: ProgressCallback | None = None,
     ) -> WorkflowState:
         """
@@ -76,7 +83,6 @@ class WorkflowRunner:
             query: Natural language query to convert to SQL.
             schemas: Optional list of schema names to filter tables.
                      If None, uses all available schemas.
-            enable_persistence: Whether to save results to disk.
             on_progress: Optional callback invoked after each node completes.
 
         Returns:
@@ -87,14 +93,13 @@ class WorkflowRunner:
         """
         self._validate_schemas(schemas)
 
-        graph = self._build_graph(enable_persistence)
         initial_state = self._create_initial_state(query, schemas)
 
         logger.info("Processing query: %s", query)
 
         if on_progress:
-            return self._run_with_progress(graph, initial_state, on_progress)
-        return graph.invoke(initial_state)
+            return self._run_with_progress(self.graph, initial_state, on_progress)
+        return self.graph.invoke(initial_state)
 
     def _validate_schemas(self, schemas: list[str] | None) -> None:
         """Validate schema names if provided."""
@@ -117,15 +122,6 @@ class WorkflowRunner:
             )
 
         logger.info("Workflow restricted to schemas: %s", schemas)
-
-    def _build_graph(self, enable_persistence: bool) -> CompiledStateGraph:
-        """Build and compile the workflow graph."""
-        logger.info("Building workflow graph...")
-        return build_main_graph(
-            self.llm_client,
-            self.settings,
-            enable_persistence=enable_persistence,
-        )
 
     def _create_initial_state(
         self,
