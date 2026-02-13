@@ -1,10 +1,11 @@
 import json
 import logging
 
+from langchain_core.prompts import ChatPromptTemplate
+
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import Settings, ModelConfig
-from sql_query_assistant.prompting import build_chat_prompt
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import (
     TableCard,
@@ -145,7 +146,10 @@ def select_tables(
         for card in other_available_tables
     )
 
-    prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("human", USER_PROMPT),
+    ])
     prompt_messages = prompt_template.format_messages(
         user_query=user_query,
         retrieved_tables=retrieved_summaries,

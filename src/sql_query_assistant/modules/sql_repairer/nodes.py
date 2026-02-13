@@ -1,11 +1,12 @@
 import json
 import logging
 
+from langchain_core.prompts import ChatPromptTemplate
+
 from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.domain import SQLDraft
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import ModelConfig
-from sql_query_assistant.prompting import build_chat_prompt
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,10 @@ def repair_sql(
     error_summary = validation_result.get_error_summary()
     logger.debug("Validation errors to fix: %s", error_summary)
 
-    prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("human", USER_PROMPT),
+    ])
 
     prompt_messages = prompt_template.format_messages(
         target_dialect=target_dialect,
