@@ -1,0 +1,23 @@
+run_id,timestamp,user_query,num_tables_retrieved,num_tables_selected,num_tables_used,drafter_provider,drafter_model,repairer_provider,repairer_model,final_sql,sql_dialect,first_validation_passed,repair_count,final_validation_passed,execution_succeeded,row_count
+20260213_143137_310431,2026-02-13T14:31:37.310431,count all female patient cases,19,2,1,aws,eu.anthropic.claude-opus-4-5-20251101-v1:0,,,"SELECT COUNT(p.SAFETY_REPORT_ID) AS female_patient_count
+FROM ICSR.PATIENT p
+WHERE p.PATIENT_SEX_ID = 2",sqlite,True,0,True,True,1
+20260213_143346_655623,2026-02-13T14:33:46.655623,"Show me all pediatric cases (infant, child, adolescent)",19,2,2,aws,eu.anthropic.claude-opus-4-5-20251101-v1:0,,,"SELECT
+    p.SAFETY_REPORT_ID,
+    p.PATIENT_AGE_GROUP_ID,
+    pag.NAME AS AGE_GROUP_NAME,
+    p.ONSET_AGE,
+    p.PATIENT_SEX_ID,
+    p.BIRTH_DATE
+FROM ICSR.PATIENT p
+JOIN ICSR_LOOKUP.PATIENT_AGE_GROUP pag
+    ON p.PATIENT_AGE_GROUP_ID = pag.PATIENT_AGE_GROUP_ID
+WHERE p.PATIENT_AGE_GROUP_ID IN (3, 4, 5)",sqlite,True,0,True,True,24
+20260213_143424_554661,2026-02-13T14:34:24.554661,"Show drug counts by role: suspect, concomitant, and interacting",20,2,2,aws,eu.anthropic.claude-opus-4-5-20251101-v1:0,,,"SELECT 
+    c.NAME AS drug_role,
+    COUNT(d.DRUG_ID) AS drug_count
+FROM ICSR.DRUG d
+JOIN ICSR_LOOKUP.CHARACTERISATION c ON d.CHARACTERISATION_ID = c.CHARACTERISATION_ID
+WHERE d.CHARACTERISATION_ID IN (1, 2, 3)
+GROUP BY c.CHARACTERISATION_ID, c.NAME
+ORDER BY drug_count DESC",sqlite,True,0,True,True,3

@@ -1,0 +1,196 @@
+{
+  "run_id": "20260213_143424_554661",
+  "timestamp": "2026-02-13T14:34:24.554661",
+  "user_query": "Show drug counts by role: suspect, concomitant, and interacting",
+  "config": {
+    "target_sql_dialect": "sqlite",
+    "max_repair_attempts": 1,
+    "total_available_tables": 136,
+    "agents": {
+      "drafter": {
+        "provider": "aws",
+        "model_name": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+        "temperature": 0.0
+      },
+      "repairer": {
+        "provider": "aws",
+        "model_name": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+        "temperature": 0.0
+      },
+      "table_selector": {
+        "provider": "aws",
+        "model_name": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+        "temperature": 0.0
+      }
+    },
+    "table_selector": {
+      "core_tables": [
+        "ICSR.SAFETY_REPORT",
+        "ICSR.PATIENT",
+        "ICSR.DRUG",
+        "ICSR.REACTION"
+      ],
+      "noise_value_maps": [
+        "NULL_FLAVOUR",
+        "DATE_PRECISION",
+        "NULLFLAVOR"
+      ]
+    },
+    "retrieval": {
+      "hybrid_search_enabled": true,
+      "search_top_k": 50,
+      "reranker_top_k": 15,
+      "fk_expansion_enabled": true,
+      "fk_expansion_source_count": 3,
+      "fk_expansion_max_total": 20,
+      "fk_expansion_include_reverse": false,
+      "schema_filter": null
+    }
+  },
+  "retrieval": {
+    "tables_from_search": [
+      "ICSR.DRUG",
+      "ICSR.REACTION",
+      "ICSR.DRUG_REACTION",
+      "ICSR_EMA.DD_SAFETYREPORT_DUPLICATES",
+      "ICSR.DOSAGE",
+      "ICSR.PATIENT",
+      "ICSR.SENDER",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_METHOD",
+      "ICSR_LOOKUP.MAP_DOSE_FORM",
+      "ICSR_LOOKUP.ROLE",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_SOURCE",
+      "ICSR.SUMMARY",
+      "ICSR_EMA.SAFETY_REPORT_RECODE",
+      "ICSR.DRUG_ADDITIONAL",
+      "ICSR.ACTIVE_SUBSTANCE_NEW",
+      "ICSR_LOOKUP.DOSE_FORM_CLASS",
+      "ICSR.PATIENT_PAST_DRUG",
+      "ICSR_LOOKUP.DOSE_FORM",
+      "ICSR.RECEIVER",
+      "ICSR.ACTIVE_SUBSTANCE",
+      "ICSR.TEST",
+      "ICSR_LOOKUP.CLUSTER_ROLE",
+      "ICSR.DRUG_REACTION_ASSESS",
+      "ICSR.PTPD_INDICATION",
+      "ICSR_EMA.DRUG_REACTION_RECODE",
+      "ICSR.DRUG_INDICATION",
+      "ICSR.PTPD_SUBSTANCE",
+      "ICSR.PARENT_PAST_DRUG",
+      "ICSR_EMA.DRUG_INDICATION_RECODE",
+      "ICSR.DRUG_RECURRENCE",
+      "ICSR_LOOKUP.DRUG_ADDITIONAL_TYPE",
+      "ICSR.PRPD_SUBSTANCE",
+      "ICSR_EMA.DRUG_RECODE",
+      "ICSR_EMA.ACTIVE_SUBSTANCE_RECODE",
+      "ICSR_EMA.PRPD_RECODE",
+      "ICSR_LOOKUP.MAP_ROUTE_OF_ADMINISTRATION",
+      "ICSR_EMA.PTPD_RECODE",
+      "ICSR_LOOKUP.ROUTE_OF_ADMINISTRATION",
+      "ICSR.PTPD_REACTION",
+      "ICSR_EMA.PTPD_SUBSTANCE_RECODE",
+      "ICSR_EMA.PRPD_SUBSTANCE_RECODE",
+      "ICSR_EMA.PTPD_INDICATION_RECODE",
+      "ICSR.PRPD_INDICATION",
+      "ICSR_EMA.PRPD_INDICATION_RECODE",
+      "ICSR.PRPD_REACTION",
+      "ICSR_EMA.PTPD_REACTION_RECODE",
+      "ICSR_EMA.DRUG_RECURRENCE_RECODE",
+      "ICSR_EMA.PRPD_REACTION_RECODE",
+      "ICSR_EMA.VW_SAFETY_REPORT_CLUSTER",
+      "ICSR.SAFETY_REPORT_CLUSTER_DUP"
+    ],
+    "tables_after_rerank": [
+      "ICSR.DRUG",
+      "ICSR.REACTION",
+      "ICSR.DRUG_REACTION",
+      "ICSR_EMA.DD_SAFETYREPORT_DUPLICATES",
+      "ICSR.DOSAGE",
+      "ICSR.PATIENT",
+      "ICSR.SENDER",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_METHOD",
+      "ICSR_LOOKUP.MAP_DOSE_FORM",
+      "ICSR_LOOKUP.ROLE",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_SOURCE",
+      "ICSR.SUMMARY",
+      "ICSR_EMA.SAFETY_REPORT_RECODE",
+      "ICSR.DRUG_ADDITIONAL",
+      "ICSR.ACTIVE_SUBSTANCE_NEW"
+    ],
+    "tables_from_fk_expansion": [
+      "ICSR_LOOKUP.ACTION_TAKEN",
+      "ICSR_LOOKUP.CHARACTERISATION",
+      "ICSR_LOOKUP.COUNTRY",
+      "ICSR_LOOKUP.DATE_PRECISION",
+      "ICSR_LOOKUP.LANGUAGE"
+    ],
+    "tables_final": [
+      "ICSR.DRUG",
+      "ICSR.REACTION",
+      "ICSR.DRUG_REACTION",
+      "ICSR_EMA.DD_SAFETYREPORT_DUPLICATES",
+      "ICSR.DOSAGE",
+      "ICSR.PATIENT",
+      "ICSR.SENDER",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_METHOD",
+      "ICSR_LOOKUP.MAP_DOSE_FORM",
+      "ICSR_LOOKUP.ROLE",
+      "ICSR_LOOKUP.EU_DRUG_ASSESS_SOURCE",
+      "ICSR.SUMMARY",
+      "ICSR_EMA.SAFETY_REPORT_RECODE",
+      "ICSR.DRUG_ADDITIONAL",
+      "ICSR.ACTIVE_SUBSTANCE_NEW",
+      "ICSR_LOOKUP.ACTION_TAKEN",
+      "ICSR_LOOKUP.CHARACTERISATION",
+      "ICSR_LOOKUP.COUNTRY",
+      "ICSR_LOOKUP.DATE_PRECISION",
+      "ICSR_LOOKUP.LANGUAGE"
+    ]
+  },
+  "selection": {
+    "rationale": "The query asks for drug counts grouped by role (suspect, concomitant, interacting). The ICSR.DRUG table is the main fact table containing drug records (136M+ rows) with a CHARACTERISATION_ID column that represents the drug's role in the adverse reaction. The value_maps show CHARACTERISATION values: 1=Suspect, 2=Concomitant, 3=Interacting, 4=Drug Not Administered. The ICSR_LOOKUP.CHARACTERISATION table is a lookup table (4 rows) that provides the human-readable names for these role IDs. To count drugs by role and display the role names, we need both tables joined on CHARACTERISATION_ID.",
+    "selected_tables": [
+      {
+        "selection_reason": "Main fact table containing drug records with CHARACTERISATION_ID column that indicates the drug's role (suspect, concomitant, interacting). This table has 136M+ rows and is needed to count drugs.",
+        "qualified_name": "ICSR.DRUG",
+        "key_columns": [
+          "DRUG_ID",
+          "CHARACTERISATION_ID"
+        ]
+      },
+      {
+        "selection_reason": "Lookup table that maps CHARACTERISATION_ID to human-readable role names (Suspect, Concomitant, Interacting, Drug Not Administered). Needed to display role names in the output.",
+        "qualified_name": "ICSR_LOOKUP.CHARACTERISATION",
+        "key_columns": [
+          "CHARACTERISATION_ID",
+          "NAME"
+        ]
+      }
+    ]
+  },
+  "drafting_and_validation": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "attempt_type": "draft",
+        "sql": "SELECT \n    c.NAME AS drug_role,\n    COUNT(d.DRUG_ID) AS drug_count\nFROM ICSR.DRUG d\nJOIN ICSR_LOOKUP.CHARACTERISATION c ON d.CHARACTERISATION_ID = c.CHARACTERISATION_ID\nWHERE d.CHARACTERISATION_ID IN (1, 2, 3)\nGROUP BY c.CHARACTERISATION_ID, c.NAME\nORDER BY drug_count DESC",
+        "rationale": "The user wants to see drug counts grouped by role (characterisation). Looking at the ICSR.DRUG table, there's a CHARACTERISATION_ID column that references ICSR_LOOKUP.CHARACTERISATION. The value_map shows:\n- 1 = Suspect\n- 2 = Concomitant\n- 3 = Interacting\n- 4 = Drug Not Administered\n\nSince the user specifically asked for suspect, concomitant, and interacting roles, I'll filter to only include CHARACTERISATION_ID values 1, 2, and 3. I'll join with the CHARACTERISATION lookup table to get the readable names and count the drugs for each role.",
+        "tables_used": [
+          "ICSR.DRUG",
+          "ICSR_LOOKUP.CHARACTERISATION"
+        ],
+        "validation_passed": true,
+        "validation_errors": []
+      }
+    ],
+    "final_sql": "SELECT \n    c.NAME AS drug_role,\n    COUNT(d.DRUG_ID) AS drug_count\nFROM ICSR.DRUG d\nJOIN ICSR_LOOKUP.CHARACTERISATION c ON d.CHARACTERISATION_ID = c.CHARACTERISATION_ID\nWHERE d.CHARACTERISATION_ID IN (1, 2, 3)\nGROUP BY c.CHARACTERISATION_ID, c.NAME\nORDER BY drug_count DESC",
+    "final_validation_passed": true
+  },
+  "execution": {
+    "attempted": true,
+    "succeeded": true,
+    "row_count": 3,
+    "error": null,
+    "duration_ms": 2.6090000001204317
+  }
+}
