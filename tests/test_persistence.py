@@ -2,9 +2,12 @@ import csv
 import json
 import re
 
-from sql_query_assistant.persistence.service import save_workflow_results, rebuild_csv_from_json
+from sql_query_assistant.persistence.service import (
+    save_workflow_results,
+    rebuild_csv_from_json,
+)
 from sql_query_assistant.persistence import persist_results
-from sql_query_assistant.domain import RunRecord
+from sql_query_assistant.domain import RunRecord, SQLDraft, ValidationResult
 
 
 def is_valid_run_id(run_id: str) -> bool:
@@ -12,7 +15,9 @@ def is_valid_run_id(run_id: str) -> bool:
     return bool(re.match(r"^\d{8}_\d{6}_\d{6}$", run_id))
 
 
-def test_save_workflow_results_creates_json_and_csv(dummy_settings, complete_workflow_state):
+def test_save_workflow_results_creates_json_and_csv(
+    dummy_settings, complete_workflow_state
+):
     """Should create JSON (source of truth) and CSV index with correct content."""
     run_id = save_workflow_results(complete_workflow_state, dummy_settings)
     assert is_valid_run_id(run_id)
@@ -29,7 +34,7 @@ def test_save_workflow_results_creates_json_and_csv(dummy_settings, complete_wor
 
     # CSV has matching row with all expected fields
     csv_file = dummy_settings.paths.query_runs_file
-    with open(csv_file, encoding='utf-8') as f:
+    with open(csv_file, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 1
     assert rows[0]["run_id"] == run_id
@@ -55,7 +60,7 @@ def test_rebuild_csv_from_json(dummy_settings, complete_workflow_state):
     count = rebuild_csv_from_json(dummy_settings)
 
     assert count == 2
-    with open(dummy_settings.paths.query_runs_file, encoding='utf-8') as f:
+    with open(dummy_settings.paths.query_runs_file, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     assert [r["run_id"] for r in rows] == sorted([run_id_1, run_id_2])
 
@@ -71,7 +76,68 @@ def test_persist_results_returns_run_id(dummy_settings, complete_workflow_state)
     assert is_valid_run_id(result["run_id"])
 
 
-def test_persist_results_skips_without_sql_draft(dummy_settings, complete_workflow_state):
+def test_persist_results_skips_without_sql_draft(
+    dummy_settings, complete_workflow_state
+):
     """Should skip persistence when sql_draft is missing."""
     state = {**complete_workflow_state, "sql_draft": None}
     assert persist_results(state, dummy_settings) == {}
+
+
+def test_save_preserves_intermediate_validation_errors(
+    dummy_settings, complete_workflow_state
+):
+    """
+    Should preserve validation errors from all attempts, not just the final one.
+
+    This tests the fix for the bug where intermediate validation errors were lost.
+    """
+    # Create repair scenario: original draft fails, repair succeeds
+    original_draft = SQLDraft(
+        sql="SELECT * FROM NONEXISTENT",
+        rationale="Bad query",
+    )
+    repaired_draft = SQLDraft(
+        sql="SELECT * FROM ICSR.PATIENT",
+        rationale="Fixed query",
+    )
+
+    # Validation results: first fails, second passes
+    validation1 = ValidationResult(
+        original_sql="SELECT * FROM NONEXISTENT",
+        syntax_errors=[],
+        explain_errors=["no such table: NONEXISTENT"],
+    )
+    validation2 = ValidationResult(
+        original_sql="SELECT * FROM ICSR.PATIENT",
+        syntax_errors=[],
+        explain_errors=[],
+    )
+
+    state = {
+        **complete_workflow_state,
+        "sql_draft": repaired_draft,
+        "repair_history": [original_draft, repaired_draft],
+        "repair_attempts": 1,
+        "validation_result": validation2,
+        "validation_history": [validation1, validation2],
+    }
+
+    run_id = save_workflow_results(state, dummy_settings)
+
+    # Read saved JSON
+    json_file = dummy_settings.paths.state_dumps_dir / f"run_{run_id}.json"
+    data = json.loads(json_file.read_text())
+
+    attempts = data["drafting_and_validation"]["attempts"]
+    assert len(attempts) == 2
+
+    # First attempt (original draft) should have its errors preserved
+    assert attempts[0]["attempt_type"] == "draft"
+    assert attempts[0]["validation_passed"] is False
+    assert "NONEXISTENT" in attempts[0]["validation_errors"][0]
+
+    # Second attempt (repair) should show success
+    assert attempts[1]["attempt_type"] == "repair"
+    assert attempts[1]["validation_passed"] is True
+    assert attempts[1]["validation_errors"] == []

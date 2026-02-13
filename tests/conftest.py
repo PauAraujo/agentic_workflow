@@ -1,6 +1,12 @@
 import pytest
+import sqlite3
 
-from sql_query_assistant.config import AzureSettings, PathSettings, Settings
+from sql_query_assistant.config import (
+    AzureSettings,
+    DatabaseSettings,
+    PathSettings,
+    Settings,
+)
 from sql_query_assistant.domain import (
     TableCard,
     TableMetadata,
@@ -11,6 +17,7 @@ from sql_query_assistant.domain import (
     QueryResult,
     RetrievalResult,
 )
+
 
 class DummyLLMClient:
     "Fakes UnifiedLLMClient.call_llm to avoid network calls and capture prompt data"
@@ -29,9 +36,12 @@ class DummyLLMClient:
         self.last_model_config = model_config
 
         if self.response is not None and not isinstance(self.response, schema):
-            raise TypeError(f"Response type {type(self.response)} does not match schema {schema}")
+            raise TypeError(
+                f"Response type {type(self.response)} does not match schema {schema}"
+            )
 
         return self.response
+
 
 @pytest.fixture
 def dummy_settings(tmp_path):
@@ -44,11 +54,29 @@ def dummy_settings(tmp_path):
             max_retries=1,
         ),
         langfuse=None,
+        database=DatabaseSettings(db_type="sqlite"),
         paths=PathSettings(
             input_dir=tmp_path,
             output_dir=tmp_path,
         ),
     )
+
+
+@pytest.fixture
+def db_with_patient_table(dummy_settings):
+    """Create a test database with ICSR schema and PATIENT table with sample data."""
+    db_dir = dummy_settings.paths.db_dir
+    db_dir.mkdir(parents=True, exist_ok=True)
+
+    icsr_db_path = db_dir / "ICSR.db"
+    conn = sqlite3.connect(icsr_db_path)
+    conn.execute("CREATE TABLE PATIENT (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.execute("INSERT INTO PATIENT VALUES (1, 'Alice')")
+    conn.execute("INSERT INTO PATIENT VALUES (2, 'Bob')")
+    conn.commit()
+    conn.close()
+
+    return dummy_settings
 
 
 @pytest.fixture
@@ -86,12 +114,14 @@ def sample_table_card():
         ],
         value_maps={
             "PATIENT_SEX": {"1": "Male", "2": "Female"},
-            "PATIENT_AGE_GROUP": {"1": "Neonate",
-                                  "2": "Infant",
-                                  "3": "Child",
-                                  "4": "Adolescent",
-                                  "5": "Adult",
-                                  "6": "Elderly"},
+            "PATIENT_AGE_GROUP": {
+                "1": "Neonate",
+                "2": "Infant",
+                "3": "Child",
+                "4": "Adolescent",
+                "5": "Adult",
+                "6": "Elderly",
+            },
         },
     )
 
@@ -139,7 +169,6 @@ def complete_workflow_state(sample_table_card, sample_selected_table_card):
     sql_draft = SQLDraft(
         sql="SELECT * FROM ICSR.PATIENT",
         rationale="Simple query to return all patient records",
-        tables_used=["ICSR.PATIENT"],
     )
 
     validation_result = ValidationResult(
@@ -171,8 +200,8 @@ def complete_workflow_state(sample_table_card, sample_selected_table_card):
         "table_cards_with_selection": [sample_selected_table_card],
         "sql_draft": sql_draft,
         "validation_result": validation_result,
+        "validation_history": [validation_result],
         "query_result": query_result,
         "repair_attempts": 0,
         "repair_history": [],
     }
-

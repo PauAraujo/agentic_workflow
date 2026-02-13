@@ -6,7 +6,9 @@ from pydantic import ValidationError
 from sql_query_assistant.utils import load_table_cards
 
 
-def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_card_dict):
+def test_load_table_cards_reads_json(
+    tmp_path, dummy_settings, sample_raw_table_card_dict
+):
     """Load a single valid table card JSON file into a fully populated TableCard model."""
     schema_dir = tmp_path / "ICSR"
     schema_dir.mkdir()
@@ -31,7 +33,9 @@ def test_load_table_cards_reads_json(tmp_path, dummy_settings, sample_raw_table_
     assert cards[0].columns[0].description == "Primary Key"
 
 
-def test_load_table_cards_ignores_non_json_files(tmp_path, dummy_settings, sample_raw_table_card_dict):
+def test_load_table_cards_ignores_non_json_files(
+    tmp_path, dummy_settings, sample_raw_table_card_dict
+):
     """
     Ignore non JSON files in the directory while still loading available JSON table cards.
     """
@@ -47,17 +51,19 @@ def test_load_table_cards_ignores_non_json_files(tmp_path, dummy_settings, sampl
     assert cards[0].table_metadata.qualified_name == "ICSR.PATIENT"
 
 
-@pytest.mark.parametrize("invalid_data", [
-    pytest.param(
-        {"wrong_field": "wrong_value", "another_field": 123},
-        id="invalid_schema_structure"
-    ),
-    pytest.param(
-        {"table_metadata": {}},
-        id="missing_required_fields"
-    ),
-])
-def test_load_table_cards_raises_validation_error(tmp_path, dummy_settings, invalid_data):
+@pytest.mark.parametrize(
+    "invalid_data",
+    [
+        pytest.param(
+            {"wrong_field": "wrong_value", "another_field": 123},
+            id="invalid_schema_structure",
+        ),
+        pytest.param({"table_metadata": {}}, id="missing_required_fields"),
+    ],
+)
+def test_load_table_cards_raises_validation_error(
+    tmp_path, dummy_settings, invalid_data
+):
     """
     Raise ValidationError when table card JSON does not conform to the TableCard schema.
     """
@@ -81,7 +87,9 @@ def test_load_table_cards_raises_validation_error(tmp_path, dummy_settings, inva
         ),
     ],
 )
-def test_load_table_cards_returns_empty_list(tmp_path, dummy_settings, setup_files, scenario):
+def test_load_table_cards_returns_empty_list(
+    tmp_path, dummy_settings, setup_files, scenario
+):
     """
     Return an empty list when the cards directory is missing, empty, or contains only non JSON files.
     """
@@ -110,7 +118,9 @@ def test_load_table_cards_malformed_json(tmp_path, dummy_settings):
         load_table_cards(settings=dummy_settings, base_path=tmp_path)
 
 
-def test_load_table_cards_with_extra_fields(tmp_path, dummy_settings, sample_raw_table_card_dict):
+def test_load_table_cards_with_extra_fields(
+    tmp_path, dummy_settings, sample_raw_table_card_dict
+):
     """
     Ignore unexpected top level keys in table card JSON while still constructing TableCard models.
     """

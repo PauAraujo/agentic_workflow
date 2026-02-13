@@ -8,17 +8,18 @@ from sql_query_assistant.domain import SQLDraft, ValidationResult
 from sql_query_assistant.modules.sql_repairer.nodes import repair_sql
 
 
-def _make_repair_client(sql, rationale, tables_used):
+def _make_repair_client(sql, rationale):
     """Create a DummyLLMClient with a SQL repair response."""
     llm_response = SQLDraft(
         sql=sql,
         rationale=rationale,
-        tables_used=tables_used,
     )
     return cast(LLMClient, DummyLLMClient(llm_response))
 
 
-def _make_repairer_state(sql_draft, validation_result, user_query, table_cards, repair_attempts=0):
+def _make_repairer_state(
+    sql_draft, validation_result, user_query, table_cards, repair_attempts=0
+):
     """Build a standard workflow state dict for repairer tests."""
     return {
         "sql_draft": sql_draft,
@@ -47,20 +48,24 @@ def test_repair_sql_returns_new_sql_draft(
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Original SQL with error",
-        tables_used=["WRONG_TABLE"],
     )
 
     client = _make_repair_client(
         sql="SELECT * FROM PATIENT",
         rationale="Fixed table name from WRONG_TABLE to PATIENT",
-        tables_used=["PATIENT"],
     )
 
     state = _make_repairer_state(
         original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
-    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    result = repair_sql(
+        state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     assert "sql_draft" in result
     new_draft = result["sql_draft"]
@@ -68,7 +73,6 @@ def test_repair_sql_returns_new_sql_draft(
     # Verify the repaired SQL is different
     assert new_draft.sql == "SELECT * FROM PATIENT"
     assert new_draft.rationale == "Fixed table name from WRONG_TABLE to PATIENT"
-    assert new_draft.tables_used == ["PATIENT"]
 
 
 def test_repair_sql_increments_repair_attempts(
@@ -78,21 +82,29 @@ def test_repair_sql_increments_repair_attempts(
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
-        tables_used=["WRONG_TABLE"],
     )
 
     client = _make_repair_client(
         sql="SELECT * FROM PATIENT",
         rationale="Fixed",
-        tables_used=["PATIENT"],
     )
 
     # Start with repair_attempts = 1
     state = _make_repairer_state(
-        original_draft, failed_validation, "Count all patients", sample_table_card, repair_attempts=1
+        original_draft,
+        failed_validation,
+        "Count all patients",
+        sample_table_card,
+        repair_attempts=1,
     )
 
-    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    result = repair_sql(
+        state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     # Should be incremented to 2
     assert result["repair_attempts"] == 2
@@ -105,20 +117,24 @@ def test_repair_sql_tracks_repair_history(
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
-        tables_used=["WRONG_TABLE"],
     )
 
     client = _make_repair_client(
         sql="SELECT * FROM PATIENT",
         rationale="Fixed",
-        tables_used=["PATIENT"],
     )
 
     state = _make_repairer_state(
         original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
-    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    result = repair_sql(
+        state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     assert "repair_history" in result
     history = result["repair_history"]
@@ -142,20 +158,24 @@ def test_repair_sql_uses_validation_errors_in_prompt(
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
-        tables_used=["WRONG_TABLE"],
     )
 
     client = _make_repair_client(
         sql="SELECT * FROM PATIENT",
         rationale="Fixed",
-        tables_used=["PATIENT"],
     )
 
     state = _make_repairer_state(
         original_draft, failed_validation, "Count all patients", sample_table_card
     )
 
-    repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    repair_sql(
+        state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     # Verify the prompt includes validation errors
     assert client.call_count == 1
@@ -164,20 +184,29 @@ def test_repair_sql_uses_validation_errors_in_prompt(
     # Check that validation errors appear in the prompt
     user_message = client.last_messages[1].content
     assert "WRONG_TABLE" in user_message
-    assert "validation errors" in user_message.lower() or "explain errors" in user_message.lower()
+    assert (
+        "validation errors" in user_message.lower()
+        or "explain errors" in user_message.lower()
+    )
 
 
 def test_repair_sql_handles_missing_required_state(dummy_settings):
     """Should return empty dict when required state fields are missing."""
     # Missing validation_result
     incomplete_state = {
-        "sql_draft": SQLDraft(sql="SELECT 1", rationale="test", tables_used=[]),
+        "sql_draft": SQLDraft(sql="SELECT 1", rationale="test"),
         "user_query": "test query",
     }
 
-    client = _make_repair_client(sql="SELECT 1", rationale="", tables_used=[])
+    client = _make_repair_client(sql="SELECT 1", rationale="")
 
-    result = repair_sql(incomplete_state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    result = repair_sql(
+        incomplete_state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     # Should return empty dict when state is incomplete
     assert result == {}
@@ -190,7 +219,6 @@ def test_repair_sql_preserves_history_on_llm_failure(
     original_draft = SQLDraft(
         sql="SELECT * FROM WRONG_TABLE",
         rationale="Error",
-        tables_used=["WRONG_TABLE"],
     )
 
     # Create a client that will raise an exception
@@ -201,16 +229,24 @@ def test_repair_sql_preserves_history_on_llm_failure(
     client = cast(LLMClient, FailingLLMClient())
 
     # Pre-populate repair history
-    existing_history = [
-        SQLDraft(sql="SELECT * FROM ATTEMPT1", rationale="First try", tables_used=["ATTEMPT1"])
-    ]
+    existing_history = [SQLDraft(sql="SELECT * FROM ATTEMPT1", rationale="First try")]
 
     state = _make_repairer_state(
-        original_draft, failed_validation, "Count all patients", sample_table_card, repair_attempts=1
+        original_draft,
+        failed_validation,
+        "Count all patients",
+        sample_table_card,
+        repair_attempts=1,
     )
     state["repair_history"] = existing_history
 
-    result = repair_sql(state, client, dummy_settings.agents.repairer, dummy_settings.target_sql_dialect, dummy_settings.max_repair_attempts)
+    result = repair_sql(
+        state,
+        client,
+        dummy_settings.agents.repairer,
+        dummy_settings.target_sql_dialect,
+        dummy_settings.max_repair_attempts,
+    )
 
     # Should still increment attempts and preserve history
     assert result["repair_attempts"] == 2

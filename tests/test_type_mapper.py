@@ -1,7 +1,7 @@
 import pytest
 
 from sql_query_assistant.domain.table_card import Column, TableCard, TableMetadata
-from sql_query_assistant.utils import transform_table_card_types
+from sql_query_assistant.utils import transform_column_types
 from sql_query_assistant.utils.type_mapper import (
     _map_oracle_type_to_sqlite,
     _transform_column_type,
@@ -118,16 +118,18 @@ def test_transform_column_does_not_mutate_original(sample_column):
         (ORACLE, POSTGRESQL),  # Non-SQLite target
     ],
 )
-def test_transform_column_only_for_oracle_to_sqlite(sample_column, source_db, target_db):
+def test_transform_column_only_for_oracle_to_sqlite(
+    sample_column, source_db, target_db
+):
     """Test that transformation only occurs for Oracle → SQLite."""
     result = _transform_column_type(sample_column, source_db, target_db)
     assert result.type == "NUMBER(15,0)"  # Unchanged
 
 
-# transform_table_card_types tests
+# transform_column_types tests
 def test_transform_table_card_all_columns(sample_table_card):
     """Test that all columns in a table card are transformed."""
-    transformed = transform_table_card_types([sample_table_card], ORACLE, SQLITE)
+    transformed = transform_column_types([sample_table_card], ORACLE, SQLITE)
 
     assert len(transformed) == 1
     assert transformed[0].columns[0].type == "INTEGER"
@@ -158,7 +160,7 @@ def test_transform_multiple_table_cards():
         ),
     ]
 
-    transformed = transform_table_card_types(table_cards, ORACLE, SQLITE)
+    transformed = transform_column_types(table_cards, ORACLE, SQLITE)
 
     assert len(transformed) == 2
     assert transformed[0].columns[0].type == "INTEGER"
@@ -169,7 +171,7 @@ def test_transform_table_card_does_not_mutate_original(sample_table_card):
     """Test that original table cards are not mutated."""
     original_type = sample_table_card.columns[0].type
 
-    transformed = transform_table_card_types([sample_table_card], ORACLE, SQLITE)
+    transformed = transform_column_types([sample_table_card], ORACLE, SQLITE)
 
     assert sample_table_card.columns[0].type == original_type
     assert transformed[0].columns[0].type == "INTEGER"
@@ -177,5 +179,5 @@ def test_transform_table_card_does_not_mutate_original(sample_table_card):
 
 def test_transform_handles_empty_list():
     """Test that empty list is handled correctly."""
-    result = transform_table_card_types([], ORACLE, SQLITE)
+    result = transform_column_types([], ORACLE, SQLITE)
     assert result == []

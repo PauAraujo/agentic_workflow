@@ -7,13 +7,33 @@ from sql_query_assistant.domain import ValidationResult
     "syntax_errors,explain_errors,expected_valid,expected_syntax_passed,expected_explain_passed",
     [
         pytest.param([], [], True, True, True, id="no_errors"),
-        pytest.param(["Expected table name"], [], False, False, True, id="syntax_errors_only"),
-        pytest.param([], ["no such table: NONEXISTENT_TABLE"], False, True, False, id="explain_errors_only"),
-        pytest.param(["Invalid syntax"], ["Cannot execute malformed query"], False, False, False, id="both_error_types"),
+        pytest.param(
+            ["Expected table name"], [], False, False, True, id="syntax_errors_only"
+        ),
+        pytest.param(
+            [],
+            ["no such table: NONEXISTENT_TABLE"],
+            False,
+            True,
+            False,
+            id="explain_errors_only",
+        ),
+        pytest.param(
+            ["Invalid syntax"],
+            ["Cannot execute malformed query"],
+            False,
+            False,
+            False,
+            id="both_error_types",
+        ),
     ],
 )
 def test_validation_result_computed_fields(
-    syntax_errors, explain_errors, expected_valid, expected_syntax_passed, expected_explain_passed
+    syntax_errors,
+    explain_errors,
+    expected_valid,
+    expected_syntax_passed,
+    expected_explain_passed,
 ):
     """Test ValidationResult computed fields with various error combinations."""
     result = ValidationResult(
