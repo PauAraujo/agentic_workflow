@@ -9,10 +9,11 @@ from botocore.exceptions import BotoCoreError, ClientError
 project_root = Path(__file__).resolve().parents[2]
 load_dotenv(project_root / ".env", override=True)
 
+
 def main():
     try:
         profile = os.getenv("AWS_PROFILE")
-        region = os.getenv("AWS_REGION", "eu-central-1") # Beware of default region
+        region = os.getenv("AWS_REGION", "eu-central-1")  # Beware of default region
 
         if not profile:
             print("ERROR: AWS_PROFILE not set in .env file")
@@ -31,6 +32,7 @@ def main():
 
     except (ClientError, BotoCoreError) as e:
         print("AWS error:", e)
+
 
 if __name__ == "__main__":
     main()

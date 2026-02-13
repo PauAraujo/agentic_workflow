@@ -12,16 +12,19 @@ load_dotenv(project_root / ".env", override=True)
 
 ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
 QUERY_KEY = os.getenv("AZURE_SEARCH_QUERY_KEY", "")
-INDEX_NAME = os.getenv("AZURE_SEARCH_INDEX_NAME", "")
+INDEX_NAME = os.getenv("AZURE_SEARCH_TABLE_CARDS_INDEX", "")
+
 
 def test_connection():
     print(f"Testing connection to: {ENDPOINT}...")
 
     try:
         # Initialize the client
-        client = SearchClient(endpoint=ENDPOINT,
-                              index_name=INDEX_NAME,
-                              credential=AzureKeyCredential(QUERY_KEY))
+        client = SearchClient(
+            endpoint=ENDPOINT,
+            index_name=INDEX_NAME,
+            credential=AzureKeyCredential(QUERY_KEY),
+        )
 
         # Run a simple search for "*" (match all) and get just 1 result
         results = client.search(search_text="*", top=1)
@@ -45,6 +48,7 @@ def test_connection():
             print("\n Tip: 403 usually means your API Key is wrong.")
         elif e.status_code == 404:
             print(f"\n Tip: 404 usually means the index '{INDEX_NAME}' doesn't exist.")
+
 
 if __name__ == "__main__":
     test_connection()
