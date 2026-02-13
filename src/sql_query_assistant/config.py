@@ -1,5 +1,6 @@
 import os
 
+from dotenv import dotenv_values
 from pathlib import Path
 from typing import Literal
 from pydantic import (
@@ -24,6 +25,7 @@ def _find_project_root() -> Path:
 
 
 PROJECT_ROOT = _find_project_root()
+_dotenv_values = dotenv_values(PROJECT_ROOT / ".env")
 
 
 class PathSettings(BaseModel):
@@ -66,6 +68,7 @@ class EnvBaseSettings(BaseSettings):
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
 
@@ -124,7 +127,7 @@ class DatabaseSettings(EnvBaseSettings):
         return self
 
 
-class AzureSettings(EnvBaseSettings):
+class AzureOpenAISettings(EnvBaseSettings):
     """
     Settings for Azure OpenAI configuration.
     """
@@ -356,7 +359,7 @@ class Settings(EnvBaseSettings):
     """
 
     # Provider settings
-    azure: AzureSettings = Field(default_factory=AzureSettings)
+    azure: AzureOpenAISettings = Field(default_factory=AzureOpenAISettings)
     aws: AwsSettings | None = None
     langfuse: LangfuseSettings | None = None
     azure_search: AzureSearchSettings | None = None
@@ -422,9 +425,13 @@ class Settings(EnvBaseSettings):
         """
 
         def _get_env_stripped(key: str):
-            val = os.getenv(key)
+            """Read an env var with .env fallback; returns None if missing or blank."""
+            val = os.getenv(key) # check real env vars first
+            if val is None:
+                val = _dotenv_values.get(key) # fall back to .env file
             if val is None:
                 return None
+            # Trim whitespace, avoids treating blank values as valid overrides
             stripped = val.strip()
             return stripped if stripped else None
 

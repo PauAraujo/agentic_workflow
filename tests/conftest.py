@@ -2,7 +2,7 @@ import pytest
 import sqlite3
 
 from sql_query_assistant.config import (
-    AzureSettings,
+    AzureOpenAISettings,
     DatabaseSettings,
     PathSettings,
     Settings,
@@ -47,7 +47,7 @@ class DummyLLMClient:
 def dummy_settings(tmp_path):
     """Creates dummy Settings instance for testing, using tmp_path for both input and output."""
     return Settings(
-        azure=AzureSettings(
+        azure=AzureOpenAISettings(
             openai_endpoint="https://example.openai.azure.com",
             api_key="dummy-key",
             api_version="2024-02-15-preview",
