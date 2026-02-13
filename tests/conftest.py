@@ -149,22 +149,18 @@ def sample_raw_table_card_dict():
 
 
 @pytest.fixture
-def sample_selected_table_card(sample_table_card):
-    """Returns a sample TableCardWithSelection wrapping the sample_table_card."""
-    return TableCardWithSelection(
-        table_card=sample_table_card,
-        selection_reason="Contains patient demographics needed for query",
-        key_columns=["SAFETY_REPORT_ID", "PATIENT_SEX_ID"],
-    )
-
-
-@pytest.fixture
-def complete_workflow_state(sample_table_card, sample_selected_table_card):
+def complete_workflow_state(sample_table_card):
     """
     Returns a complete WorkflowState with all fields populated.
 
     Useful for testing persistence module which expects fully executed workflow state.
     """
+
+    selected_table_card = TableCardWithSelection(
+        table_card=sample_table_card,
+        selection_reason="Contains patient demographics needed for query",
+        key_columns=["SAFETY_REPORT_ID", "PATIENT_SEX_ID"],
+    )
 
     sql_draft = SQLDraft(
         sql="SELECT * FROM ICSR.PATIENT",
@@ -197,7 +193,7 @@ def complete_workflow_state(sample_table_card, sample_selected_table_card):
         "retrieval_result": retrieval_result,
         "table_cards": [sample_table_card],
         "all_table_cards": [sample_table_card],
-        "table_cards_with_selection": [sample_selected_table_card],
+        "table_cards_with_selection": [selected_table_card],
         "sql_draft": sql_draft,
         "validation_result": validation_result,
         "validation_history": [validation_result],

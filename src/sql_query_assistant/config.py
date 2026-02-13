@@ -30,8 +30,8 @@ class PathSettings(BaseModel):
     """
     Paths to input/output directories used by the workflow.
 
-    The base fields can be overridden via environment settings, while
-    the derived properties keep call sites simple and consistent.
+    Base fields can be overridden via constructor kwargs, while the
+    derived properties keep call sites simple and consistent.
     """
 
     input_dir: Path = PROJECT_ROOT / "input"
@@ -58,18 +58,6 @@ class PathSettings(BaseModel):
         """The directory containing all schema database files (.db)."""
         return self.input_dir / self.schemas_dir
 
-    def get_database_path(self, schema_name: str = "ICSR") -> Path:
-        """
-        Get the path to a specific schema database file.
-
-        Args:
-            schema_name: Name of the schema (default: ICSR)
-
-        Returns:
-            Path to the schema database file
-        """
-        return self.db_dir / f"{schema_name}.db"
-
 
 class EnvBaseSettings(BaseSettings):
     """Loads environment variables"""
@@ -78,7 +66,6 @@ class EnvBaseSettings(BaseSettings):
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        populate_by_name=True,
     )
 
 
