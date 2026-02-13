@@ -25,14 +25,10 @@ class WorkflowState(TypedDict, total=False):
     # Table card retriever output
     retrieval_result: RetrievalResult  # detailed retrieval pipeline results
     table_cards: list[TableCard]  # final tables from retriever (before table selection)
-    all_table_cards: list[
-        TableCard
-    ]  # all available table cards (for table_selector to add missing tables)
+    all_table_cards: list[TableCard]  # available table cards for table_selector
 
     # Table Selector output
-    table_cards_with_selection: list[
-        TableCardWithSelection
-    ]  # enriched with selection context
+    table_cards_with_selection: list[TableCardWithSelection]  # enriched
     selection_rationale: str  # LLM's explanation of overall table selection strategy
 
     # SQL Drafter output
@@ -40,13 +36,11 @@ class WorkflowState(TypedDict, total=False):
 
     # SQL Validator output
     validation_result: ValidationResult
-    validation_history: list[
-        ValidationResult
-    ]  # all validation results (for preserving intermediate errors)
+    validation_history: list[ValidationResult]
 
     # SQL Repairer tracking
     repair_attempts: int
-    repair_history: list[SQLDraft]  # populated only when repair occurs
+    repair_history: list[SQLDraft]
 
     # SQL Executor output
     query_result: QueryResult

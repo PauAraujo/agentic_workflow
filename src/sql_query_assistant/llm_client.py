@@ -148,12 +148,12 @@ class LLMClient:
         # Format: {region}.{provider}.{model} or {provider}.{model}
         if "." in model_id:
             parts = model_id.split(".")
-            # Check if first part is a region prefix (eu, us, ap, global, etc.)
+            # Check if first part is a region prefix
             # Known region prefixes for inference profiles
             region_prefixes = ["eu", "us", "ap", "ca", "sa", "af", "me", "global"]
             if len(parts) >= 2 and parts[0] in region_prefixes:
                 # Inference profile: region.provider.model
-                return parts[1] if len(parts) > 1 else None
+                return parts[1]
             else:
                 # Foundation model: provider.model
                 return parts[0]
@@ -222,6 +222,10 @@ def create_llm_client(settings: Settings) -> LLMClient:
     if settings.langfuse is not None:
         try:
             logger.info("Initializing Langfuse tracing")
+            # The Langfuse() call below registers credentials with the Langfuse SDK
+            # behind the scenes. We don't need to keep the returned object,
+            # CallbackHandler() on the next line automatically uses the credentials
+            # we just registered to send LLM traces to Langfuse.
             Langfuse(
                 public_key=settings.langfuse.public_key,
                 secret_key=settings.langfuse.secret_key,
