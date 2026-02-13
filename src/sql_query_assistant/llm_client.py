@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+
 class LLMClient:
     """
     LLM client supporting multiple providers (Azure OpenAI, AWS Bedrock).
@@ -24,12 +25,16 @@ class LLMClient:
     Routes LLM calls to the appropriate provider based on ModelConfig.
     """
 
-    def __init__(self, settings: Settings, langfuse_handler: CallbackHandler | None = None):
+    def __init__(
+        self, settings: Settings, langfuse_handler: CallbackHandler | None = None
+    ):
         self.settings = settings
         self.langfuse_handler = langfuse_handler
 
     @classmethod
-    def from_settings(cls, settings: Settings, langfuse_handler: CallbackHandler | None = None) -> "LLMClient":
+    def from_settings(
+        cls, settings: Settings, langfuse_handler: CallbackHandler | None = None
+    ) -> "LLMClient":
         """
         Create a LLMClient instance from Settings.
 
@@ -82,7 +87,9 @@ class LLMClient:
             Parsed LLM response conforming to the provided schema
         """
         llm = self.create_llm(model_config)
-        structured_llm = llm.with_structured_output(schema=schema, method="function_calling")
+        structured_llm = llm.with_structured_output(
+            schema=schema, method="function_calling"
+        )
         retrying_llm = structured_llm.with_retry(
             retry_if_exception_type=(ValidationError, OutputParserException),
             stop_after_attempt=max_retries,
@@ -179,15 +186,10 @@ class LLMClient:
 
         # Create retry configuration
         retry_config = Config(
-            retries={
-                "max_attempts": self.settings.aws.max_retries,
-                "mode": "adaptive"
-            }
+            retries={"max_attempts": self.settings.aws.max_retries, "mode": "adaptive"}
         )
         bedrock_client = session.client(
-            "bedrock-runtime",
-            region_name=self.settings.aws.region,
-            config=retry_config
+            "bedrock-runtime", region_name=self.settings.aws.region, config=retry_config
         )
 
         # Extract provider from ARN/model ID for langchain-aws
@@ -227,7 +229,9 @@ def create_llm_client(settings: Settings) -> LLMClient:
             )
             handler = CallbackHandler()
         except Exception as exc:
-            logger.warning("Langfuse initialization failed, continuing without tracing: %s", exc)
+            logger.warning(
+                "Langfuse initialization failed, continuing without tracing: %s", exc
+            )
     else:
         logger.info("Langfuse tracing disabled (no LANGFUSE_* env vars)")
     return LLMClient.from_settings(settings, langfuse_handler=handler)

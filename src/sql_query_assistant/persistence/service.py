@@ -36,7 +36,7 @@ def _append_to_csv(file_path: Path, row: dict[str, Any], fieldnames: list[str]) 
         )
 
     file_exists = file_path.exists()
-    with open(file_path, 'a', encoding='utf-8', newline='') as f:
+    with open(file_path, "a", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
@@ -80,7 +80,7 @@ def save_workflow_results(state: WorkflowState, settings: Settings) -> str:
     # Write JSON first (source of truth)
     json_file = json_dir / JSON_FILENAME_PATTERN.format(run_id)
     try:
-        with open(json_file, 'w', encoding='utf-8') as f:
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(run_record.model_dump(), f, indent=2, ensure_ascii=False)
     except TypeError as exc:
         logger.error(f"JSON serialization failed: {exc}", exc_info=True)
@@ -136,7 +136,7 @@ def rebuild_csv_from_json(settings: Settings) -> int:
     records_processed = 0
     for json_file in json_files:
         try:
-            with open(json_file, 'r', encoding='utf-8') as f:
+            with open(json_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             run_record = RunRecord.model_validate(data)

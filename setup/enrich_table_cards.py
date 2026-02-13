@@ -5,12 +5,12 @@ import argparse
 import pandas as pd
 
 from pathlib import Path
-from typing import Any, Optional 
+from typing import Any, Optional
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%H:%M:%S"
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -39,17 +39,19 @@ def clean_text(text: Any) -> Optional[str]:
     text_str = str(text).strip()
     if text_str.lower() == "nan":
         return None
-    
+
     # Remove specific Excel artifact
     text_str = text_str.replace("_x000D_", "\n")
-    
+
     # Normalize newlines and strip again
     text_str = text_str.strip()
-    
+
     return text_str if text_str else None
 
 
-def load_excel_data(exports_dir: Path) -> tuple[dict[tuple[str, str], str], dict[str, dict[str, str]]]:
+def load_excel_data(
+    exports_dir: Path,
+) -> tuple[dict[tuple[str, str], str], dict[str, dict[str, str]]]:
     """
     Load table and column descriptions from Excel files.
 
@@ -74,10 +76,10 @@ def load_excel_data(exports_dir: Path) -> tuple[dict[tuple[str, str], str], dict
     df_tables = pd.read_excel(table_path)
     table_map = {}
     for _, row in df_tables.iterrows():
-        table_name = str(row.get('Name', '')).strip().upper()
-        owner = clean_text(row.get('Owner'))
+        table_name = str(row.get("Name", "")).strip().upper()
+        owner = clean_text(row.get("Owner"))
         owner = owner.upper() if owner else None
-        description = clean_text(row.get('Comment'))
+        description = clean_text(row.get("Comment"))
         if table_name and description:
             key = (owner, table_name)
             table_map[key] = description
@@ -87,23 +89,25 @@ def load_excel_data(exports_dir: Path) -> tuple[dict[tuple[str, str], str], dict
     df_columns = pd.read_excel(column_path)
     column_map = {}
     for _, row in df_columns.iterrows():
-        table_name = str(row.get('Table', '')).strip().upper()
-        col_name = str(row.get('Name', '')).strip().upper()
-        description = clean_text(row.get('Comment'))
+        table_name = str(row.get("Table", "")).strip().upper()
+        col_name = str(row.get("Name", "")).strip().upper()
+        description = clean_text(row.get("Comment"))
 
         if table_name and col_name and description:
             if table_name not in column_map:
                 column_map[table_name] = {}
             column_map[table_name][col_name] = description
 
-    logger.info(f"Loaded descriptions for {len(table_map)} tables and {sum(len(c) for c in column_map.values())} columns.")
+    logger.info(
+        f"Loaded descriptions for {len(table_map)} tables and {sum(len(c) for c in column_map.values())} columns."
+    )
     return table_map, column_map
 
 
 def process_card(
     file_path: Path,
     table_descriptions: dict[tuple[str, str], str],
-    column_descriptions: dict[str, dict[str, str]]
+    column_descriptions: dict[str, dict[str, str]],
 ) -> bool:
     """
     Process a single JSON card file, updating it if descriptions are missing.
@@ -117,48 +121,50 @@ def process_card(
         True if the file was modified, False otherwise.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
         logger.error(f"Failed to read {file_path}: {e}")
         return False
 
     is_modified = False
-    
+
     # Update table description
-    table_meta = data.get('table_metadata', {})
-    table_name = table_meta.get('name', '').upper()
-    schema_name = table_meta.get('schema_name', '') or file_path.parent.name
+    table_meta = data.get("table_metadata", {})
+    table_name = table_meta.get("name", "").upper()
+    schema_name = table_meta.get("schema_name", "") or file_path.parent.name
     schema_name = str(schema_name).upper()
-    current_table_desc = table_meta.get('description')
+    current_table_desc = table_meta.get("description")
 
     if not current_table_desc:
-        new_desc = table_descriptions.get((schema_name, table_name)) or table_descriptions.get((None, table_name))
+        new_desc = table_descriptions.get(
+            (schema_name, table_name)
+        ) or table_descriptions.get((None, table_name))
         if new_desc:
-            table_meta['description'] = new_desc
+            table_meta["description"] = new_desc
             is_modified = True
             logger.debug(f"[{table_name}] Added table description.")
 
     # Update column descriptions
-    columns = data.get('columns', [])
+    columns = data.get("columns", [])
     if table_name in column_descriptions:
         excel_cols = column_descriptions[table_name]
-        
+
         for col in columns:
-            col_name = col.get('name', '').upper()
-            current_col_desc = col.get('description')
+            col_name = col.get("name", "").upper()
+            current_col_desc = col.get("description")
 
             if not current_col_desc:
                 new_col_desc = excel_cols.get(col_name)
                 if new_col_desc:
-                    col['description'] = new_col_desc
+                    col["description"] = new_col_desc
                     is_modified = True
                     logger.debug(f"[{table_name}.{col_name}] Added column description.")
 
     # Save if modified
     if is_modified:
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             return True
         except Exception as e:
@@ -169,8 +175,15 @@ def process_card(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Enrich table cards with Excel descriptions.")
-    parser.add_argument("--exports-dir", type=Path, default=DEFAULT_EXPORTS_DIR, help="Directory containing Excel exports.")
+    parser = argparse.ArgumentParser(
+        description="Enrich table cards with Excel descriptions."
+    )
+    parser.add_argument(
+        "--exports-dir",
+        type=Path,
+        default=DEFAULT_EXPORTS_DIR,
+        help="Directory containing Excel exports.",
+    )
     parser.add_argument(
         "--cards-dir",
         type=Path,
@@ -202,7 +215,9 @@ def main():
 
     # Allow pointing to root (input/table_cards) or a single schema directory
     has_subdirs = any(p.is_dir() for p in args.cards_dir.iterdir())
-    json_files = list(args.cards_dir.rglob("*.json") if has_subdirs else args.cards_dir.glob("*.json"))
+    json_files = list(
+        args.cards_dir.rglob("*.json") if has_subdirs else args.cards_dir.glob("*.json")
+    )
     logger.info(f"Found {len(json_files)} JSON card files to process.")
 
     modified_count = 0

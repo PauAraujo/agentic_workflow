@@ -41,11 +41,18 @@ def repair_sql(
     repair_history = state.get("repair_history", [])
 
     if not validation_result or not sql_draft or not user_query:
-        logger.error("Missing required state for repair: validation_result, sql_draft, or user_query")
+        logger.error(
+            "Missing required state for repair: validation_result, sql_draft, or user_query"
+        )
         return {}
 
     repair_attempts += 1
-    logger.info("SQL repair attempt %d/%d (target dialect: %s)", repair_attempts, max_repair_attempts, target_dialect)
+    logger.info(
+        "SQL repair attempt %d/%d (target dialect: %s)",
+        repair_attempts,
+        max_repair_attempts,
+        target_dialect,
+    )
 
     error_summary = validation_result.get_error_summary()
     logger.debug("Validation errors to fix: %s", error_summary)
@@ -66,11 +73,15 @@ def repair_sql(
             schema=SQLDraft,
             model_config=model_config,
         )
-        logger.info("SQL repair completed (dialect: %s). New SQL: %s", target_dialect, repaired_draft.sql[:100])
+        logger.info(
+            "SQL repair completed (dialect: %s). New SQL: %s",
+            target_dialect,
+            repaired_draft.sql[:100],
+        )
 
         # On first repair, preserve the original draft in history so it's not lost
         if not repair_history:
-            repair_history.append(sql_draft) # original failed draft
+            repair_history.append(sql_draft)  # original failed draft
 
         # Track repair history for audit trail
         repair_history.append(repaired_draft)
@@ -78,12 +89,12 @@ def repair_sql(
         return {
             "sql_draft": repaired_draft,
             "repair_attempts": repair_attempts,
-            "repair_history": repair_history
+            "repair_history": repair_history,
         }
 
     except Exception as e:
         logger.exception("Unexpected error during SQL repair: %s", e)
         return {
             "repair_attempts": repair_attempts,
-            "repair_history": repair_history  # preserve history even on failure
+            "repair_history": repair_history,  # preserve history even on failure
         }

@@ -44,7 +44,9 @@ def _map_oracle_type_to_sqlite(oracle_type: str) -> str:
         return "INTEGER"
 
     # Floating point types
-    if oracle_type.startswith(("FLOAT", "DOUBLE", "REAL", "BINARY_FLOAT", "BINARY_DOUBLE")):
+    if oracle_type.startswith(
+        ("FLOAT", "DOUBLE", "REAL", "BINARY_FLOAT", "BINARY_DOUBLE")
+    ):
         return "REAL"
 
     # Binary/blob types (check LONG RAW before LONG to avoid mismatching)
@@ -52,7 +54,19 @@ def _map_oracle_type_to_sqlite(oracle_type: str) -> str:
         return "BLOB"
 
     # Character/string types (LONG checked after LONG RAW)
-    if oracle_type.startswith(("CHAR", "VARCHAR", "VARCHAR2", "NCHAR", "NVARCHAR", "NVARCHAR2", "CLOB", "NCLOB", "LONG")):
+    if oracle_type.startswith(
+        (
+            "CHAR",
+            "VARCHAR",
+            "VARCHAR2",
+            "NCHAR",
+            "NVARCHAR",
+            "NVARCHAR2",
+            "CLOB",
+            "NCLOB",
+            "LONG",
+        )
+    ):
         return "TEXT"
 
     # Date/time types
@@ -63,7 +77,9 @@ def _map_oracle_type_to_sqlite(oracle_type: str) -> str:
     return "TEXT"
 
 
-def _transform_column_type(column: Column, source_dialect: str, target_dialect: str) -> Column:
+def _transform_column_type(
+    column: Column, source_dialect: str, target_dialect: str
+) -> Column:
     """
     Transforms a column's type from source dialect to target dialect.
 

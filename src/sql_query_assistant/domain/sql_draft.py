@@ -8,5 +8,7 @@ class SQLDraft(BaseModel):
     Used as both the LLM response schema and the workflow state model.
     """
 
-    rationale: str = Field(..., description="Explanation of the SQL logic or what was fixed")
+    rationale: str = Field(
+        ..., description="Explanation of the SQL logic or what was fixed"
+    )
     sql: str = Field(..., description="SQL statement")

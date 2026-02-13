@@ -1,5 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 
+
 def build_chat_prompt(system_prompt: str, user_prompt: str) -> ChatPromptTemplate:
     """
     Construct a ChatPromptTemplate with system and human messages.
@@ -11,7 +12,9 @@ def build_chat_prompt(system_prompt: str, user_prompt: str) -> ChatPromptTemplat
     Returns:
         ChatPromptTemplate object combining the prompts.
     """
-    return ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", user_prompt),
-    ])
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            ("human", user_prompt),
+        ]
+    )

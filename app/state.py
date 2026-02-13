@@ -27,8 +27,13 @@ def load_metadata(settings: Settings) -> None:
     Args:
         settings: Application settings containing paths to metadata files
     """
-    if "table_cards" not in st.session_state or st.session_state.get("table_cards") is None:
-        st.session_state["table_cards"] = load_table_cards(settings=settings, base_path=None)
+    if (
+        "table_cards" not in st.session_state
+        or st.session_state.get("table_cards") is None
+    ):
+        st.session_state["table_cards"] = load_table_cards(
+            settings=settings, base_path=None
+        )
 
 
 def get_settings() -> Settings:

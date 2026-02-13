@@ -11,7 +11,6 @@ from sql_query_assistant.state import WorkflowState
 from sql_query_assistant.utils import get_available_schemas
 from sql_query_assistant.workflow.main_graph import build_main_graph
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +30,7 @@ NODE_DESCRIPTIONS = {
 @dataclass
 class NodeEvent:
     """Event emitted when a workflow node completes."""
+
     node_name: str
     description: str
     state_update: dict

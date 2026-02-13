@@ -38,7 +38,7 @@ def get_available_schemas(settings: Settings) -> dict[str, int]:
             logger.warning(
                 "Skipping schema directory '%s': invalid name (must start with "
                 "letter and contain only alphanumeric characters and underscores)",
-                schema_name
+                schema_name,
             )
             continue
 

@@ -8,10 +8,7 @@ class TableCardSearchResult(BaseModel):
     schema_name: str
     table_name: str
     qualified_name: str
-    score: float = Field(
-        description="Relevance score from Azure AI Search"
-    )
+    score: float = Field(description="Relevance score from Azure AI Search")
     reranker_score: float | None = Field(
-        default=None,
-        description="Semantic reranker score if available"
+        default=None, description="Semantic reranker score if available"
     )

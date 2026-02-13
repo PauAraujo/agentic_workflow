@@ -85,7 +85,9 @@ class SQLiteBackend:
             execution_time_ms = (time.perf_counter() - start_time) * 1000
 
             rows = cursor.fetchall()
-            column_names = [desc[0] for desc in cursor.description] if cursor.description else []
+            column_names = (
+                [desc[0] for desc in cursor.description] if cursor.description else []
+            )
             result_rows = [dict(row) for row in rows]
 
         return result_rows, column_names, execution_time_ms

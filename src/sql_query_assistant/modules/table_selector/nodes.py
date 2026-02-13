@@ -6,7 +6,11 @@ from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.config import Settings, ModelConfig
 from sql_query_assistant.prompting import build_chat_prompt
 from sql_query_assistant.state import WorkflowState
-from sql_query_assistant.domain import TableCard, TableCardWithSelection, TableSelectionResponse
+from sql_query_assistant.domain import (
+    TableCard,
+    TableCardWithSelection,
+    TableSelectionResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,8 @@ def _format_table_card_for_selector(
 
     if data.get("value_maps"):
         data["value_maps"] = {
-            k: v for k, v in data["value_maps"].items()
+            k: v
+            for k, v in data["value_maps"].items()
             if k.upper() not in noise_value_maps
         }
 
@@ -87,53 +92,57 @@ def select_tables(
         raise ValueError("No user query provided to table selector")
 
     if not retrieved_cards:
-        raise ValueError(f"Retriever returned no tables for query: '{user_query[:100]}'")
+        raise ValueError(
+            f"Retriever returned no tables for query: '{user_query[:100]}'"
+        )
 
     if not all_cards:
-        raise ValueError("all_table_cards missing from state, retriever must populate this field")
+        raise ValueError(
+            "all_table_cards missing from state, retriever must populate this field"
+        )
 
     logger.info(
         "Table selection: analyzing %d retrieved tables for query: '%s'",
         len(retrieved_cards),
-        user_query[:100]
+        user_query[:100],
     )
 
     retrieved_names = {card.table_metadata.qualified_name for card in retrieved_cards}
 
     # Build lookup for quick access by qualified name
-    all_cards_by_name = {
-        card.table_metadata.qualified_name: card
-        for card in all_cards
-    }
+    all_cards_by_name = {card.table_metadata.qualified_name: card for card in all_cards}
 
     # BUILD "OTHER AVAILABLE" TABLES LIST
     # Core tables act as a safety net for critical tables the retriever might miss.
 
     # Get configurable values from settings
     core_tables = set(settings.table_selector.core_tables)
-    noise_value_maps = {name.upper() for name in settings.table_selector.noise_value_maps}
+    noise_value_maps = {
+        name.upper() for name in settings.table_selector.noise_value_maps
+    }
 
     # Add core tables that aren't already in retrieved set
     other_available_tables = [
         all_cards_by_name[name]
         for name in core_tables
-        if name in all_cards_by_name
-        and name not in retrieved_names
+        if name in all_cards_by_name and name not in retrieved_names
     ]
 
     logger.info(
         "Other available tables: %d core tables (not already retrieved)",
-        len(other_available_tables)
+        len(other_available_tables),
     )
 
     # Format prompt and call LLM
     # All tables get detailed summaries for informed decision-making
     retrieved_summaries = "\n\n".join(
-        _format_table_card_for_selector(card, noise_value_maps) for card in retrieved_cards
+        _format_table_card_for_selector(card, noise_value_maps)
+        for card in retrieved_cards
     )
     # Core tables also get detailed summaries
     other_summaries = "\n\n".join(
-        _format_table_card_for_selector(card, noise_value_maps) for card in other_available_tables
+        _format_table_card_for_selector(card, noise_value_maps)
+        for card in other_available_tables
     )
 
     prompt_template = build_chat_prompt(SYSTEM_PROMPT, USER_PROMPT)
@@ -159,36 +168,38 @@ def select_tables(
         if table_selection.qualified_name in selected_names:
             logger.warning(
                 "Duplicate table in selection: %s (skipping)",
-                table_selection.qualified_name
+                table_selection.qualified_name,
             )
             continue
 
         # Look up the full table card
         card = all_cards_by_name.get(table_selection.qualified_name)
         if card:
-            selected_cards.append(TableCardWithSelection(
-                table_card=card,
-                selection_reason=table_selection.selection_reason,
-                key_columns=table_selection.key_columns,
-            ))
+            selected_cards.append(
+                TableCardWithSelection(
+                    table_card=card,
+                    selection_reason=table_selection.selection_reason,
+                    key_columns=table_selection.key_columns,
+                )
+            )
             selected_names.add(table_selection.qualified_name)
             logger.debug(
                 "Selected table %s: %s",
                 table_selection.qualified_name,
-                table_selection.selection_reason
+                table_selection.selection_reason,
             )
         else:
             # LLM hallucinated a table name, log warning but continue
             logger.warning(
                 "Table selector referenced unknown table: %s",
-                table_selection.qualified_name
+                table_selection.qualified_name,
             )
 
     logger.info(
         "Table selection complete: %d retrieved + %d core available -> %d selected",
         len(retrieved_cards),
         len(other_available_tables),
-        len(selected_cards)
+        len(selected_cards),
     )
     logger.info("Selection rationale: %s", llm_response.rationale)
 

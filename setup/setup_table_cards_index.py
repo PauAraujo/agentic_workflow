@@ -33,8 +33,7 @@ from sql_query_assistant.config import Settings
 from sql_query_assistant.utils.loaders import load_table_cards
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ ANALYZER_ENGLISH = "en.microsoft"
 ANALYZER_KEYWORD = "keyword"
 
 # Noise suffixes that add no semantic value (high frequency, low meaning)
-SUFFIX_NOISE_TOKENS = {'id', 'code', 'key', 'num', 'pk', 'fk', 'flag', 'ind'}
+SUFFIX_NOISE_TOKENS = {"id", "code", "key", "num", "pk", "fk", "flag", "ind"}
 
 # Semantic configuration name
 SEMANTIC_CONFIG_NAME = "table-cards-semantic-config"
@@ -67,8 +66,8 @@ VECTOR_ALGORITHM_NAME = "hnsw-algorithm"
 VECTOR_PROFILE_NAME = "vector-profile"
 
 # ID sanitization
-UNSAFE_ID_CHARS = ['$', '.', '/', '\\', '#', '?']
-SAFE_ID_REPLACEMENT = '_'
+UNSAFE_ID_CHARS = ["$", ".", "/", "\\", "#", "?"]
+SAFE_ID_REPLACEMENT = "_"
 
 
 def create_table_cards_index(
@@ -76,7 +75,7 @@ def create_table_cards_index(
     admin_key: str,
     index_name: str,
     embedding_dimensions: int = 1536,
-    delete_if_exists: bool = True
+    delete_if_exists: bool = True,
 ) -> None:
     """
     Create the table cards search index with appropriate schema.
@@ -122,32 +121,32 @@ def create_table_cards_index(
             type=SearchFieldDataType.String,
             key=True,
             filterable=True,
-            sortable=True
+            sortable=True,
         ),
         SearchableField(
             name=FIELD_SCHEMA_NAME,
             type=SearchFieldDataType.String,
             filterable=True,  # OData filtering works on raw stored value, not analyzed tokens
             facetable=True,
-            analyzer_name=ANALYZER_ENGLISH  # "ICSR_LOOKUP" → ["icsr", "lookup"] for queries like "lookup tables"
+            analyzer_name=ANALYZER_ENGLISH,  # "ICSR_LOOKUP" → ["icsr", "lookup"] for queries like "lookup tables"
         ),
         SearchableField(
             name=FIELD_TABLE_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
             sortable=True,  # sorting works on raw stored value, not analyzed tokens
-            analyzer_name=ANALYZER_ENGLISH  # "DRUG_REACTION" → ["drug", "reaction"] for natural language queries
+            analyzer_name=ANALYZER_ENGLISH,  # "DRUG_REACTION" → ["drug", "reaction"] for natural language queries
         ),
         SearchableField(
             name=FIELD_QUALIFIED_NAME,
             type=SearchFieldDataType.String,
             filterable=True,
-            analyzer_name=ANALYZER_ENGLISH  # "ICSR.DRUG_REACTION" → ["icsr", "drug", "reaction"]
+            analyzer_name=ANALYZER_ENGLISH,  # "ICSR.DRUG_REACTION" → ["icsr", "drug", "reaction"]
         ),
-        SearchableField( # lexical field ("BM25" search layer)
+        SearchableField(  # lexical field ("BM25" search layer)
             name=FIELD_DESCRIPTION,
             type=SearchFieldDataType.String,
-            analyzer_name=ANALYZER_ENGLISH # tokenizes, stems, removes stop words, case-insensitive
+            analyzer_name=ANALYZER_ENGLISH,  # tokenizes, stems, removes stop words, case-insensitive
         ),
         SearchableField(
             name=FIELD_COLUMN_NAMES,
@@ -157,34 +156,34 @@ def create_table_cards_index(
             # it removes noise suffixes. Example: "PATIENT_SEX_ID" becomes "patient sex" in
             # normalized_column_names, vs ["patient", "sex", "id"] if we used ENGLISH here.
             # This field exists for exact column name lookups if ever needed.
-            analyzer_name=ANALYZER_KEYWORD
+            analyzer_name=ANALYZER_KEYWORD,
         ),
         SearchableField(
             name=FIELD_NORMALIZED_COLUMN_NAMES,
             type=SearchFieldDataType.String,
-            analyzer_name=ANALYZER_ENGLISH
+            analyzer_name=ANALYZER_ENGLISH,
         ),
         SearchableField(
             name=FIELD_COLUMN_DESCRIPTIONS,
             type=SearchFieldDataType.String,
-            analyzer_name=ANALYZER_ENGLISH
+            analyzer_name=ANALYZER_ENGLISH,
         ),
         SearchableField(
             name=FIELD_SEARCHABLE_CONTENT,
             type=SearchFieldDataType.String,
-            analyzer_name=ANALYZER_ENGLISH
+            analyzer_name=ANALYZER_ENGLISH,
         ),
         SimpleField(
             name=FIELD_ROW_COUNT,
             type=SearchFieldDataType.Int64,
             filterable=True,
-            sortable=True
+            sortable=True,
         ),
         SimpleField(
             name=FIELD_COLUMN_COUNT,
             type=SearchFieldDataType.Int32,
             filterable=True,
-            sortable=True
+            sortable=True,
         ),
         # Vector field for semantic similarity search
         SearchField(
@@ -192,7 +191,7 @@ def create_table_cards_index(
             type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
             searchable=True,
             vector_search_dimensions=embedding_dimensions,
-            vector_search_profile_name=VECTOR_PROFILE_NAME
+            vector_search_profile_name=VECTOR_PROFILE_NAME,
         ),
     ]
 
@@ -206,16 +205,16 @@ def create_table_cards_index(
                     m=4,  # Number of bi-directional links (4 is good for <1000 docs)
                     ef_construction=400,  # Higher = better recall during indexing
                     ef_search=500,  # Higher = better recall during search
-                    metric="cosine"  # Cosine similarity for normalized embeddings
-                )
+                    metric="cosine",  # Cosine similarity for normalized embeddings
+                ),
             )
         ],
         profiles=[
             VectorSearchProfile(
                 name=VECTOR_PROFILE_NAME,
-                algorithm_configuration_name=VECTOR_ALGORITHM_NAME
+                algorithm_configuration_name=VECTOR_ALGORITHM_NAME,
             )
-        ]
+        ],
     )
 
     # Semantic re-ranking configuration
@@ -224,30 +223,28 @@ def create_table_cards_index(
     # 3. Model re-orders results based on reading comprehension, not just keyword frequency.
     semantic_config = SemanticConfiguration(
         name=SEMANTIC_CONFIG_NAME,
-        prioritized_fields=SemanticPrioritizedFields( # high importance
+        prioritized_fields=SemanticPrioritizedFields(  # high importance
             title_field=SemanticField(field_name=FIELD_QUALIFIED_NAME),
-            content_fields=[ # medium importance
+            content_fields=[  # medium importance
                 SemanticField(field_name=FIELD_SEARCHABLE_CONTENT),
                 SemanticField(field_name=FIELD_NORMALIZED_COLUMN_NAMES),
-                SemanticField(field_name=FIELD_COLUMN_DESCRIPTIONS)
+                SemanticField(field_name=FIELD_COLUMN_DESCRIPTIONS),
             ],
-            keywords_fields=[ # low importance
+            keywords_fields=[  # low importance
                 SemanticField(field_name=FIELD_TABLE_NAME),
-                SemanticField(field_name=FIELD_SCHEMA_NAME)
-            ]
-        )
+                SemanticField(field_name=FIELD_SCHEMA_NAME),
+            ],
+        ),
     )
 
-    semantic_search = SemanticSearch(
-        configurations=[semantic_config]
-    )
+    semantic_search = SemanticSearch(configurations=[semantic_config])
 
     # Create the index with vector search and semantic reranking
     index = SearchIndex(
         name=index_name,
         fields=fields,
         vector_search=vector_search,
-        semantic_search=semantic_search
+        semantic_search=semantic_search,
     )
 
     index_client.create_or_update_index(index)
@@ -267,15 +264,12 @@ def create_embedding_client(settings: Settings) -> AzureOpenAI:
     return AzureOpenAI(
         api_key=settings.azure.api_key,
         api_version=settings.azure.api_version,
-        azure_endpoint=str(settings.azure.openai_endpoint)
+        azure_endpoint=str(settings.azure.openai_endpoint),
     )
 
 
 def generate_embeddings(
-    client: AzureOpenAI,
-    texts: list[str],
-    deployment: str,
-    batch_size: int = 16
+    client: AzureOpenAI, texts: list[str], deployment: str, batch_size: int = 16
 ) -> list[list[float]]:
     """
     Generate embeddings for a list of texts using Azure OpenAI.
@@ -292,13 +286,10 @@ def generate_embeddings(
     all_embeddings = []
 
     for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+        batch = texts[i : i + batch_size]
         logger.debug(f"Generating embeddings for batch {i // batch_size + 1}")
 
-        response = client.embeddings.create(
-            input=batch,
-            model=deployment
-        )
+        response = client.embeddings.create(input=batch, model=deployment)
 
         batch_embeddings = [item.embedding for item in response.data]
         all_embeddings.extend(batch_embeddings)
@@ -327,13 +318,14 @@ def normalize_column_name(column_name: str) -> str:
         Normalized column name (e.g., "patient sex")
     """
     # Split on underscores and convert to lowercase
-    tokens = column_name.lower().split('_')
+    tokens = column_name.lower().split("_")
 
     # Strip only if last token is noise AND there are multiple tokens
     if len(tokens) > 1 and tokens[-1] in SUFFIX_NOISE_TOKENS:
         tokens = tokens[:-1]
 
-    return ' '.join(tokens)
+    return " ".join(tokens)
+
 
 def prepare_table_card_document(table_card, card_index: int) -> dict:
     """
@@ -359,16 +351,17 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
 
     # Extract column information
     column_names = [col.name for col in table_card.columns]
-    column_descriptions = " ".join([
-        f"{col.name}: {col.description}"
-        for col in table_card.columns
-        if col.description
-    ])
+    column_descriptions = " ".join(
+        [
+            f"{col.name}: {col.description}"
+            for col in table_card.columns
+            if col.description
+        ]
+    )
 
     # Normalize column names for better searchability
     normalized_column_names = [
-        normalize_column_name(col_name)
-        for col_name in column_names
+        normalize_column_name(col_name) for col_name in column_names
     ]
     # Filter out empty normalized names
     normalized_column_names_text = " ".join(filter(None, normalized_column_names))
@@ -385,9 +378,7 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
 
     # Add foreign key information from columns
     column_fk_parts = [
-        f"{col.name} references {col.fk}"
-        for col in table_card.columns
-        if col.fk
+        f"{col.name} references {col.fk}" for col in table_card.columns if col.fk
     ]
     if column_fk_parts:
         searchable_parts.append(" ".join(column_fk_parts))
@@ -413,10 +404,7 @@ def prepare_table_card_document(table_card, card_index: int) -> dict:
 
 
 def index_table_cards(
-    endpoint: str,
-    admin_key: str,
-    index_name: str,
-    settings: Settings
+    endpoint: str, admin_key: str, index_name: str, settings: Settings
 ) -> None:
     """
     Load and index all table cards from the configured directory.
@@ -441,8 +429,7 @@ def index_table_cards(
 
     # Convert table cards to search documents
     documents = [
-        prepare_table_card_document(card, idx)
-        for idx, card in enumerate(table_cards)
+        prepare_table_card_document(card, idx) for idx, card in enumerate(table_cards)
     ]
 
     # Generate embeddings for searchable content
@@ -455,7 +442,7 @@ def index_table_cards(
     embeddings = generate_embeddings(
         client=embedding_client,
         texts=searchable_contents,
-        deployment=embedding_deployment
+        deployment=embedding_deployment,
     )
 
     # Add embeddings to documents
@@ -466,11 +453,7 @@ def index_table_cards(
 
     # Upload to Azure AI Search
     logger.info(f"Uploading documents to index '{index_name}'...")
-    search_client = SearchClient(
-        endpoint,
-        index_name,
-        AzureKeyCredential(admin_key)
-    )
+    search_client = SearchClient(endpoint, index_name, AzureKeyCredential(admin_key))
 
     result = search_client.upload_documents(documents=documents)
 
@@ -493,7 +476,9 @@ def main():
 
     admin_key = os.getenv("AZURE_SEARCH_ADMIN_KEY")
     if not admin_key:
-        logger.error("AZURE_SEARCH_ADMIN_KEY environment variable is required for setup")
+        logger.error(
+            "AZURE_SEARCH_ADMIN_KEY environment variable is required for setup"
+        )
         return
 
     if not settings.azure_search:
@@ -516,10 +501,7 @@ def main():
 
     # Create the index with vector search support
     create_table_cards_index(
-        endpoint,
-        admin_key,
-        index_name,
-        embedding_dimensions=embedding_dimensions
+        endpoint, admin_key, index_name, embedding_dimensions=embedding_dimensions
     )
 
     # Index the table cards with embeddings

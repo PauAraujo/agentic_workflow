@@ -7,11 +7,13 @@ from typing import Any, Optional, Tuple
 
 from sql_query_assistant.config import Settings
 
-
 # Lookup column candidates for identifying key-value pairs in lookup tables
 KEY_COLUMN_CANDIDATES = ["ID", "CODE"]
 VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
-KEY_COLUMN_SUFFIXES = ["_CODE", "_ID"]  # prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
+KEY_COLUMN_SUFFIXES = [
+    "_CODE",
+    "_ID",
+]  # prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
 VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
 
 # Metadata field names
@@ -60,16 +62,16 @@ LOOKUP_SCHEMA_NAME = "ICSR_LOOKUP"
 # Table filtering patterns for text-to-SQL relevance
 # These patterns identify operational/technical tables that are not useful for end-user queries
 SKIP_TABLE_PREFIXES = (
-    "TMP_",        # Temporary/staging tables
-    "DD_",         # Deduplication tables (except DD_SAFETYREPORT_DUPLICATES - see KEEP list)
-    "DDC_",        # Deduplication cluster tables
-    "QRTZ_",       # Quartz scheduler tables
-    "CT_",         # Empty clinical trial tables (ICSR_EMA)
-    "MODEL_",      # ML model intermediates
+    "TMP_",  # Temporary/staging tables
+    "DD_",  # Deduplication tables (except DD_SAFETYREPORT_DUPLICATES - see KEEP list)
+    "DDC_",  # Deduplication cluster tables
+    "QRTZ_",  # Quartz scheduler tables
+    "CT_",  # Empty clinical trial tables (ICSR_EMA)
+    "MODEL_",  # ML model intermediates
     "INTERPRETATION_",  # Interpretation intermediates
     "REROUTED_MESSAGE",  # Message rerouting tables (ICSR_EMA)
-    "EXPORT_REQUEST",    # Export plumbing tables (ICSR_EMA)
-    "VW_R_AUTO_LOG",     # Log aggregation views (ICSR_EMA)
+    "EXPORT_REQUEST",  # Export plumbing tables (ICSR_EMA)
+    "VW_R_AUTO_LOG",  # Log aggregation views (ICSR_EMA)
 )
 
 # Tables to explicitly KEEP even if they match skip patterns
@@ -78,36 +80,36 @@ KEEP_TABLES = {
 }
 
 SKIP_TABLE_SUFFIXES = (
-    "_TMP",        # Temporary tables
-    "_HIST",       # Historical audit tables (ICSR_EMA only)
-    "_LOG",        # Logging tables
+    "_TMP",  # Temporary tables
+    "_HIST",  # Historical audit tables (ICSR_EMA only)
+    "_LOG",  # Logging tables
 )
 
 SKIP_TABLE_PATTERNS = (
-    "_BK_",        # Backup tables (e.g., CASE_REPORT_BK_SCTASK0223177)
-    "_BAK",        # Backup tables
+    "_BK_",  # Backup tables (e.g., CASE_REPORT_BK_SCTASK0223177)
+    "_BAK",  # Backup tables
 )
 
 # Exact table names to skip (across all schemas)
 SKIP_TABLES_GLOBAL = {
-    "MAP_TBL_COL",          # Technical metadata
-    "MAP_TBL_SEQ",          # Technical metadata
-    "TBL_STATS_EXPORT",     # Export statistics
-    "UNIT_MISSPELLING",     # Spelling correction
-    "CONFIG_PARAMETER",     # Operational config
-    "QUALITY_ISSUE",        # Operational
-    "CRITERIA",             # Operational config
-    "SCHEMA_VERSION",       # Schema version metadata
+    "MAP_TBL_COL",  # Technical metadata
+    "MAP_TBL_SEQ",  # Technical metadata
+    "TBL_STATS_EXPORT",  # Export statistics
+    "UNIT_MISSPELLING",  # Spelling correction
+    "CONFIG_PARAMETER",  # Operational config
+    "QUALITY_ISSUE",  # Operational
+    "CRITERIA",  # Operational config
+    "SCHEMA_VERSION",  # Schema version metadata
 }
 
 # Tables to skip only in specific schemas
 SKIP_TABLES_BY_SCHEMA = {
     "ICSR": {
-        "TMP_REPORTER",     # Staging data
+        "TMP_REPORTER",  # Staging data
     },
     "ICSR_LOOKUP": {
-        "ACCESS_LEVEL",     # Not referenced by core tables
-        "ACCESS_RIGHT",     # System permissions, not clinical
+        "ACCESS_LEVEL",  # Not referenced by core tables
+        "ACCESS_RIGHT",  # System permissions, not clinical
     },
     "ICSR_EMA": {
         "ACCESS_POLICY",
@@ -124,18 +126,18 @@ SKIP_TABLES_BY_SCHEMA = {
         "REPORT_CATEGORY_ORG",
         "APP_COMPONENT_DOWNTIME",
         "DOCUMENT_DMS_MAPPING",
-        "DM_CONFIGURATION",       # Data management config
-        "DM_MAPPING",             # Data management mapping
-        "DM_EXTERNAL_DATA",       # Data management external
-        "D_PROCEDURERESULTS",     # Procedure results (internal)
-        "R_STATUS_PRODS",         # Status products (internal)
-        "R_STATUS_SUBS",          # Status substances (internal)
+        "DM_CONFIGURATION",  # Data management config
+        "DM_MAPPING",  # Data management mapping
+        "DM_EXTERNAL_DATA",  # Data management external
+        "D_PROCEDURERESULTS",  # Procedure results (internal)
+        "R_STATUS_PRODS",  # Status products (internal)
+        "R_STATUS_SUBS",  # Status substances (internal)
         "ICSR_FIELD_NULL_FLAVOUR",  # Field metadata
-        "ICSR_FIELD_OID",           # Field OIDs
-        "VW_ORGANISATION_HQ",       # Org hierarchy view
-        "VW_REPORTS_MLM",           # MLM reporting view
-        "VW_SUBSTANCES_MLM",        # MLM substances view
-        "ACTIVE_SUBSTANCE_MLM",     # MLM substance data
+        "ICSR_FIELD_OID",  # Field OIDs
+        "VW_ORGANISATION_HQ",  # Org hierarchy view
+        "VW_REPORTS_MLM",  # MLM reporting view
+        "VW_SUBSTANCES_MLM",  # MLM substances view
+        "ACTIVE_SUBSTANCE_MLM",  # MLM substance data
         "SAFETY_REPORT_COMMIT_ROLLBACK",  # Transactional tracking (empty)
     },
 }
@@ -235,9 +237,7 @@ def load_metadata(path: Path) -> dict[str, Any]:
 
 
 def group_by_key(
-    items: list[dict[str, Any]],
-    key: str,
-    sort_key: Optional[str] = None
+    items: list[dict[str, Any]], key: str, sort_key: Optional[str] = None
 ) -> dict[str, list[dict[str, Any]]]:
     """Group items by a specified key with optional sorting."""
     grouped = {}
@@ -270,8 +270,7 @@ def build_type_string(column: dict[str, Any]) -> str:
 
 
 def pick_lookup_columns(
-    columns: list[dict[str, Any]],
-    table_name: Optional[str] = None
+    columns: list[dict[str, Any]], table_name: Optional[str] = None
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Identify key and value columns in a lookup table.
@@ -282,7 +281,9 @@ def pick_lookup_columns(
     column_names = [col[FIELD_COLUMN_NAME] for col in columns]
     upper_names = [name.upper() for name in column_names]
 
-    def find_candidate(base_candidates: list[str], suffixes: list[str]) -> Optional[str]:
+    def find_candidate(
+        base_candidates: list[str], suffixes: list[str]
+    ) -> Optional[str]:
         # First priority: column that matches table_name + suffix
         if table_name:
             upper_table = table_name.upper()
@@ -313,9 +314,13 @@ def pick_lookup_columns(
             key_column = column_names[0]
             value_column = column_names[1]
         elif key_column and not value_column:
-            value_column = column_names[1] if column_names[0] == key_column else column_names[0]
+            value_column = (
+                column_names[1] if column_names[0] == key_column else column_names[0]
+            )
         elif value_column and not key_column:
-            key_column = column_names[0] if column_names[1] == value_column else column_names[1]
+            key_column = (
+                column_names[0] if column_names[1] == value_column else column_names[1]
+            )
 
     if key_column and value_column and key_column != value_column:
         return key_column, value_column
@@ -384,7 +389,9 @@ def load_value_map_with_metadata(
         return value_map
 
 
-def build_column_fk_map(foreign_keys_rows: list[dict[str, Any]]) -> dict[Tuple[str, str], str]:
+def build_column_fk_map(
+    foreign_keys_rows: list[dict[str, Any]],
+) -> dict[Tuple[str, str], str]:
     """
     Build a mapping from (table_name, column_name) to compact FK string.
 
@@ -407,12 +414,16 @@ def build_column_fk_map(foreign_keys_rows: list[dict[str, Any]]) -> dict[Tuple[s
             ref_table = row[FIELD_REFERENCED_TABLE]
             ref_column = row[FIELD_REFERENCED_COLUMN]
             # Compact FK format: "SCHEMA.TABLE.COLUMN"
-            column_fk_map[(table_name, column_name)] = f"{ref_schema}.{ref_table}.{ref_column}"
+            column_fk_map[(table_name, column_name)] = (
+                f"{ref_schema}.{ref_table}.{ref_column}"
+            )
 
     return column_fk_map
 
 
-def get_table_row_count(tables: dict[str, list[dict[str, Any]]], table_name: str) -> Optional[int]:
+def get_table_row_count(
+    tables: dict[str, list[dict[str, Any]]], table_name: str
+) -> Optional[int]:
     """Get row count for a table from tables metadata."""
     table_data = tables.get(table_name, [])
     return table_data[0].get(FIELD_NUM_ROWS) if table_data else None
@@ -420,7 +431,7 @@ def get_table_row_count(tables: dict[str, list[dict[str, Any]]], table_name: str
 
 def extract_primary_key_columns(
     constraints: list[dict[str, Any]],
-    constraint_columns: dict[str, list[dict[str, Any]]]
+    constraint_columns: dict[str, list[dict[str, Any]]],
 ) -> list[str]:
     """Extract primary key column names for a table."""
     for constraint in constraints:
@@ -456,7 +467,9 @@ def generate_table_cards(
     # Index metadata by table name - ONLY for current schema
     schema_tables = group_by_key(metadata.get("tables", []), FIELD_TABLE_NAME)
     schema_columns = group_by_key(metadata.get("columns", []), FIELD_TABLE_NAME)
-    constraints_by_table = group_by_key(metadata.get("constraints", []), FIELD_TABLE_NAME)
+    constraints_by_table = group_by_key(
+        metadata.get("constraints", []), FIELD_TABLE_NAME
+    )
 
     # Build lookup dictionaries for comments (current schema only)
     table_comments = {
@@ -472,7 +485,7 @@ def generate_table_cards(
     constraint_columns = group_by_key(
         metadata.get("constraint_columns", []),
         FIELD_CONSTRAINT_NAME,
-        sort_key=FIELD_POSITION
+        sort_key=FIELD_POSITION,
     )
     column_fk_map = build_column_fk_map(metadata.get("foreign_keys", []))
 
@@ -480,8 +493,12 @@ def generate_table_cards(
     lookup_tables = {}
     lookup_columns = {}
     if lookup_metadata:
-        lookup_tables = group_by_key(lookup_metadata.get("tables", []), FIELD_TABLE_NAME)
-        lookup_columns = group_by_key(lookup_metadata.get("columns", []), FIELD_TABLE_NAME)
+        lookup_tables = group_by_key(
+            lookup_metadata.get("tables", []), FIELD_TABLE_NAME
+        )
+        lookup_columns = group_by_key(
+            lookup_metadata.get("columns", []), FIELD_TABLE_NAME
+        )
 
     cards_dir.mkdir(parents=True, exist_ok=True)
 
@@ -502,7 +519,9 @@ def generate_table_cards(
 
         # Extract primary key columns
         table_constraints = constraints_by_table.get(table_name, [])
-        primary_key_columns = extract_primary_key_columns(table_constraints, constraint_columns)
+        primary_key_columns = extract_primary_key_columns(
+            table_constraints, constraint_columns
+        )
 
         # Collect value_maps for deduplication at table level
         table_value_maps: dict[str, dict[str, str]] = {}
@@ -538,15 +557,26 @@ def generate_table_cards(
                         if ref_table not in table_value_maps:
                             # Try to load value_map from CSV
                             ref_columns = lookup_columns.get(ref_table, [])
-                            key_col, value_col = pick_lookup_columns(ref_columns, table_name=ref_table)
+                            key_col, value_col = pick_lookup_columns(
+                                ref_columns, table_name=ref_table
+                            )
 
                             # Override key_col with the actual referenced column
-                            if any(c.get(FIELD_COLUMN_NAME) == ref_column for c in ref_columns):
+                            if any(
+                                c.get(FIELD_COLUMN_NAME) == ref_column
+                                for c in ref_columns
+                            ):
                                 key_col = ref_column
 
                             if key_col and value_col:
-                                csv_path = exports_dir / ref_schema / f"{ref_table}{CSV_EXTENSION}"
-                                row_count = get_table_row_count(lookup_tables, ref_table)
+                                csv_path = (
+                                    exports_dir
+                                    / ref_schema
+                                    / f"{ref_table}{CSV_EXTENSION}"
+                                )
+                                row_count = get_table_row_count(
+                                    lookup_tables, ref_table
+                                )
                                 if csv_path.exists() and row_count is not None:
                                     value_map = load_value_map_with_metadata(
                                         csv_path, key_col, value_col, row_count
@@ -595,7 +625,9 @@ def generate_table_cards(
 
     print(f"  Generated: {cards_generated} table cards")
     if cards_filtered > 0:
-        print(f"  Filtered: {cards_filtered} operational/technical tables (use --include-all to include)")
+        print(
+            f"  Filtered: {cards_filtered} operational/technical tables (use --include-all to include)"
+        )
     if cards_skipped > 0:
         print(f"  Skipped: {cards_skipped} existing cards (use --overwrite to replace)")
 
@@ -617,7 +649,9 @@ def main():
     else:
         metadata_paths = sorted(exports_dir.glob(f"*/{METADATA_FILENAME}"))
         if not metadata_paths:
-            raise ValueError("No metadata files found. Provide --schema or --metadata-file.")
+            raise ValueError(
+                "No metadata files found. Provide --schema or --metadata-file."
+            )
 
     # Pre-load ICSR_LOOKUP metadata for value_map generation
     lookup_metadata_path = exports_dir / LOOKUP_SCHEMA_NAME / METADATA_FILENAME
@@ -633,7 +667,9 @@ def main():
         schema_cards_dir = cards_dir / schema_name
 
         # Pass lookup_metadata only if processing a different schema
-        current_lookup_metadata = lookup_metadata if schema_name != LOOKUP_SCHEMA_NAME else None
+        current_lookup_metadata = (
+            lookup_metadata if schema_name != LOOKUP_SCHEMA_NAME else None
+        )
 
         generate_table_cards(
             metadata,

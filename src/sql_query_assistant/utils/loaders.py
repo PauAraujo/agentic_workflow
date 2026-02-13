@@ -89,6 +89,10 @@ def load_table_cards(
     if not table_cards:
         logger.warning("No table cards loaded from any schema directory")
     else:
-        logger.info("Loaded %d table cards from %d schema(s)", len(table_cards), len(schema_dirs))
+        logger.info(
+            "Loaded %d table cards from %d schema(s)",
+            len(table_cards),
+            len(schema_dirs),
+        )
 
     return table_cards

@@ -20,9 +20,7 @@ def _make_failed_query_state(error_message: str) -> dict:
     """
     return {
         "query_result": QueryResult(
-            success=False,
-            row_count=0,
-            error_message=error_message
+            success=False, row_count=0, error_message=error_message
         )
     }
 
@@ -47,14 +45,22 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
     executable_sql = sql_draft.sql
 
     logger.info("Executing SQL")
-    logger.debug("SQL (dialect: %s): %s", settings.target_sql_dialect, executable_sql[:100])
+    logger.debug(
+        "SQL (dialect: %s): %s", settings.target_sql_dialect, executable_sql[:100]
+    )
 
     try:
         backend = create_backend(settings)
-        result_rows, column_names, execution_time_ms = backend.execute_query(executable_sql)
+        result_rows, column_names, execution_time_ms = backend.execute_query(
+            executable_sql
+        )
         row_count = len(result_rows)
 
-        logger.info("Query executed successfully: %d rows returned in %.2fms", row_count, execution_time_ms)
+        logger.info(
+            "Query executed successfully: %d rows returned in %.2fms",
+            row_count,
+            execution_time_ms,
+        )
 
         return {
             "query_result": QueryResult(
@@ -62,7 +68,7 @@ def execute_sql(state: WorkflowState, settings: Settings) -> dict:
                 row_count=row_count,
                 column_names=column_names,
                 rows=result_rows,
-                execution_time_ms=execution_time_ms
+                execution_time_ms=execution_time_ms,
             )
         }
 

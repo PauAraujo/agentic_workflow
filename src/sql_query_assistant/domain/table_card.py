@@ -6,8 +6,12 @@ class TableMetadata(BaseModel):
 
     model_config = ConfigDict(extra="allow", frozen=True)
 
-    qualified_name: str = Field(description="Schema-qualified table name (e.g., 'ICSR.PATIENT')")
-    schema_name: str = Field(description="Database schema name (e.g., 'ICSR', 'ICSR_LOOKUP')")
+    qualified_name: str = Field(
+        description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
+    )
+    schema_name: str = Field(
+        description="Database schema name (e.g., 'ICSR', 'ICSR_LOOKUP')"
+    )
     name: str = Field(description="Table name without schema prefix")
     description: str | None = None
     synonyms: list[str] = Field(default_factory=list)
@@ -38,13 +42,13 @@ class Column(BaseModel):
     # Compact FK format: "SCHEMA.TABLE.COLUMN"
     fk: str | None = Field(
         default=None,
-        description="Foreign key reference in format 'SCHEMA.TABLE.COLUMN'"
+        description="Foreign key reference in format 'SCHEMA.TABLE.COLUMN'",
     )
 
     # Reference to deduplicated value_map at table level
     value_map_ref: str | None = Field(
         default=None,
-        description="Key into TableCard.value_maps for this column's lookup values"
+        description="Key into TableCard.value_maps for this column's lookup values",
     )
 
     def get_fk_parts(self) -> tuple[str, str, str] | None:
@@ -92,7 +96,7 @@ class TableCard(BaseModel):
     # All maps include "_count" (total values in lookup table)
     value_maps: dict[str, dict[str, str | int]] | None = Field(
         default=None,
-        description="Lookup table value mappings with metadata, keyed by table name"
+        description="Lookup table value mappings with metadata, keyed by table name",
     )
 
 
@@ -111,14 +115,12 @@ class TableCardWithSelection(BaseModel):
     """
 
     table_card: TableCard = Field(
-        ...,
-        description="The full table card with schema metadata"
+        ..., description="The full table card with schema metadata"
     )
     selection_reason: str = Field(
         ...,
-        description="Why the Table Selector determined this table is needed for the query"
+        description="Why the Table Selector determined this table is needed for the query",
     )
     key_columns: list[str] = Field(
-        default_factory=list,
-        description="Columns identified as relevant to the query"
+        default_factory=list, description="Columns identified as relevant to the query"
     )

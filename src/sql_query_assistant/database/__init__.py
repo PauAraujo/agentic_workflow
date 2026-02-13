@@ -23,7 +23,7 @@ class DatabaseBackend(Protocol):
 
 
 # Valid schema name pattern: starts with letter, contains only alphanumeric and underscores
-VALID_SCHEMA_NAME_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
+VALID_SCHEMA_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 def validate_schema_name(schema_name: str) -> None:
@@ -64,9 +64,11 @@ def create_backend(settings: Settings) -> DatabaseBackend:
 
     if db_type == "sqlite":
         from .sqlite_backend import SQLiteBackend
+
         return SQLiteBackend(settings)
     elif db_type == "oracle":
         from .oracle_backend import OracleBackend
+
         return OracleBackend(settings)
     else:
         raise ValueError(f"Unsupported DB_TYPE: {db_type}")

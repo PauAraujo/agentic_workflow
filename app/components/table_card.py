@@ -5,7 +5,9 @@ from sql_query_assistant.domain import TableCard
 from app.config import PRIMARY_BLUE
 
 
-def render_table_cards(table_cards: list[TableCard], *, accent: str = PRIMARY_BLUE) -> None:
+def render_table_cards(
+    table_cards: list[TableCard], *, accent: str = PRIMARY_BLUE
+) -> None:
     """
     Render visual summary of table cards with metadata and column information.
 

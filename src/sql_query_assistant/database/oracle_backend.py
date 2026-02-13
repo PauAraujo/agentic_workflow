@@ -11,6 +11,7 @@ class OracleBackend:
     """
     Oracle database backend using oracledb thin client.
     """
+
     def __init__(self, settings: Settings):
         self._settings = settings
 
@@ -28,7 +29,12 @@ class OracleBackend:
             password=db_settings.oracle_password,
             dsn=data_source_name,
         )
-        logger.debug("Connected to Oracle at %s:%d/%s", db_settings.oracle_host, db_settings.oracle_port, db_settings.oracle_service)
+        logger.debug(
+            "Connected to Oracle at %s:%d/%s",
+            db_settings.oracle_host,
+            db_settings.oracle_port,
+            db_settings.oracle_service,
+        )
         return conn
 
     def execute_query(self, sql: str) -> tuple[list[dict], list[str], float]:
@@ -54,11 +60,17 @@ class OracleBackend:
             cursor.execute(sql)
             execution_time_ms = (time.perf_counter() - start_time) * 1000
 
-            column_names = [desc[0] for desc in cursor.description] if cursor.description else []
+            column_names = (
+                [desc[0] for desc in cursor.description] if cursor.description else []
+            )
             rows = cursor.fetchall()
             result_rows = [dict(zip(column_names, row)) for row in rows]
 
-            logger.debug("Oracle query returned %d rows in %.2fms", len(result_rows), execution_time_ms)
+            logger.debug(
+                "Oracle query returned %d rows in %.2fms",
+                len(result_rows),
+                execution_time_ms,
+            )
             return result_rows, column_names, execution_time_ms
         finally:
             conn.close()

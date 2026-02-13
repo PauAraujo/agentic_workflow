@@ -7,7 +7,7 @@ STATE_DUMPS_DIR = ROOT / "output" / "state_dumps"
 
 HEADER_IMG = IMAGES_DIR / "header_image.jpg"
 FLOW_DIGRAM_IMG = IMAGES_DIR / "flow_diagram.png"
-COMPACT_FLOW_DIGRAM_IMG =  IMAGES_DIR / "flow_diagram_compact.png"
+COMPACT_FLOW_DIGRAM_IMG = IMAGES_DIR / "flow_diagram_compact.png"
 
 # UI Constants
 PRIMARY_BLUE = "#0b2d59"

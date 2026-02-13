@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
@@ -54,7 +55,9 @@ def log_workflow_results(result_state: WorkflowState) -> None:
             logger.info("SQL validation: PASSED")
         else:
             logger.warning("SQL validation: FAILED")
-            logger.warning("Validation errors: %s", validation_result.get_error_summary())
+            logger.warning(
+                "Validation errors: %s", validation_result.get_error_summary()
+            )
 
     # Log repair attempts and history
     repair_attempts = result_state.get("repair_attempts", 0)
@@ -96,7 +99,6 @@ def main():
 
     try:
         settings = Settings()
-
 
         user_query = args.query
         if not user_query:

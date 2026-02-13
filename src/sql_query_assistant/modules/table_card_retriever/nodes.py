@@ -48,7 +48,7 @@ def _get_embedding_client(settings: Settings) -> AzureOpenAI:
         _embedding_client = AzureOpenAI(
             api_key=settings.azure.api_key,
             api_version=settings.azure.api_version,
-            azure_endpoint=str(settings.azure.openai_endpoint)
+            azure_endpoint=str(settings.azure.openai_endpoint),
         )
     return _embedding_client
 
@@ -67,10 +67,7 @@ def _generate_query_embedding(query: str, settings: Settings) -> list[float]:
     client = _get_embedding_client(settings)
     deployment = settings.azure_search.embedding_deployment
 
-    response = client.embeddings.create(
-        input=[query],
-        model=deployment
-    )
+    response = client.embeddings.create(input=[query], model=deployment)
 
     return response.data[0].embedding
 
@@ -111,13 +108,12 @@ def _expand_with_fk_relationships(
         return reranked_top_cards[:max_total], []
 
     # Build lookup index: qualified_name -> TableCard
-    all_cards_by_name = {
-        card.table_metadata.qualified_name: card
-        for card in all_cards
-    }
+    all_cards_by_name = {card.table_metadata.qualified_name: card for card in all_cards}
 
     # Track which table cards we already have (to avoid duplicates during FK expansion)
-    already_included = {card.table_metadata.qualified_name for card in reranked_top_cards}
+    already_included = {
+        card.table_metadata.qualified_name for card in reranked_top_cards
+    }
     fk_neighbor_names: set[str] = set()
 
     # Select top N reranked cards as sources for FK expansion
@@ -160,12 +156,10 @@ def _expand_with_fk_relationships(
 
     # Separate FK neighbors by schema for prioritization
     lookup_table_names = [
-        name for name in fk_neighbor_names
-        if name.startswith(f"{PRIORITY_SCHEMA}.")
+        name for name in fk_neighbor_names if name.startswith(f"{PRIORITY_SCHEMA}.")
     ]
     other_table_names = [
-        name for name in fk_neighbor_names
-        if not name.startswith(f"{PRIORITY_SCHEMA}.")
+        name for name in fk_neighbor_names if not name.startswith(f"{PRIORITY_SCHEMA}.")
     ]
     # Find NAMES first to ensure stable ordering
     # Priority order: reranked cards > lookup tables > other FK tables
@@ -206,7 +200,7 @@ def _expand_with_fk_relationships(
     fk_expanded_cards.sort(
         key=lambda card: (
             0 if card.table_metadata.schema_name == PRIORITY_SCHEMA else 1,
-            card.table_metadata.qualified_name
+            card.table_metadata.qualified_name,
         )
     )
     final_cards.extend(fk_expanded_cards)
@@ -260,7 +254,7 @@ def retrieve_relevant_table_cards(
     search_client = SearchClient(
         endpoint=str(settings.azure_search.endpoint),
         index_name=settings.azure_search.table_cards_index_name,
-        credential=AzureKeyCredential(settings.azure_search.query_key)
+        credential=AzureKeyCredential(settings.azure_search.query_key),
     )
 
     # Build OData filter for schema filtering
@@ -280,11 +274,16 @@ def retrieve_relevant_table_cards(
         search_params = {
             "search_text": user_query,
             "query_type": QueryType.SEMANTIC,
-            "semantic_configuration_name": SEMANTIC_CONFIG_NAME, # specific to semantic search
-            "query_caption": QueryCaptionType.EXTRACTIVE, # specific to semantic search
-            "query_answer": QueryAnswerType.EXTRACTIVE, # specific to semantic search
+            "semantic_configuration_name": SEMANTIC_CONFIG_NAME,  # specific to semantic search
+            "query_caption": QueryCaptionType.EXTRACTIVE,  # specific to semantic search
+            "query_answer": QueryAnswerType.EXTRACTIVE,  # specific to semantic search
             "top": settings.azure_search.top_k,
-            "select": [FIELD_ID, FIELD_SCHEMA_NAME, FIELD_TABLE_NAME, FIELD_QUALIFIED_NAME],
+            "select": [
+                FIELD_ID,
+                FIELD_SCHEMA_NAME,
+                FIELD_TABLE_NAME,
+                FIELD_QUALIFIED_NAME,
+            ],
         }
 
         # Add schema filter if schemas are restricted
@@ -299,7 +298,7 @@ def retrieve_relevant_table_cards(
             vector_query = VectorizedQuery(
                 vector=query_embedding,
                 k_nearest_neighbors=settings.azure_search.top_k,
-                fields=FIELD_CONTENT_VECTOR
+                fields=FIELD_CONTENT_VECTOR,
             )
             search_params["vector_queries"] = [vector_query]
         else:
@@ -316,7 +315,7 @@ def retrieve_relevant_table_cards(
                 table_name=result[FIELD_TABLE_NAME],
                 qualified_name=result[FIELD_QUALIFIED_NAME],
                 score=result.get(FIELD_SEARCH_SCORE, 0.0),
-                reranker_score=result.get(FIELD_RERANKER_SCORE)
+                reranker_score=result.get(FIELD_RERANKER_SCORE),
             )
             search_results.append(search_result)
             logger.debug(
@@ -342,7 +341,9 @@ def retrieve_relevant_table_cards(
                 "index may be empty or misconfigured, or embeddings may not be deployed."
             )
 
-        logger.info(f"Retrieved {len(search_results)} relevant table cards from Azure Search")
+        logger.info(
+            f"Retrieved {len(search_results)} relevant table cards from Azure Search"
+        )
 
         # Track tables from initial search (for RetrievalResult)
         tables_from_search = [sr.qualified_name for sr in search_results]
@@ -351,12 +352,13 @@ def retrieve_relevant_table_cards(
         # Search results are already schema-filtered by Azure Search above
         all_table_cards = load_table_cards(settings)
         if settings.target_sql_dialect.lower() == "sqlite":
-            all_table_cards = transform_column_types(all_table_cards, "oracle", "sqlite")
+            all_table_cards = transform_column_types(
+                all_table_cards, "oracle", "sqlite"
+            )
 
         # Create a mapping from qualified name to table card
         table_cards_by_qualified_name = {
-            card.table_metadata.qualified_name: card
-            for card in all_table_cards
+            card.table_metadata.qualified_name: card for card in all_table_cards
         }
 
         # Filter to only the relevant table cards, preserving search ranking order
@@ -389,7 +391,7 @@ def retrieve_relevant_table_cards(
         expanded_cards, tables_from_fk_expansion = _expand_with_fk_relationships(
             reranked_top_cards=selected_cards,
             all_cards=all_table_cards,
-            settings=settings
+            settings=settings,
         )
 
         # Build final table list for RetrievalResult
@@ -410,5 +412,7 @@ def retrieve_relevant_table_cards(
         }
 
     except Exception as e:
-        logger.error(f"Error retrieving table cards from Azure Search: {e}", exc_info=True)
+        logger.error(
+            f"Error retrieving table cards from Azure Search: {e}", exc_info=True
+        )
         raise

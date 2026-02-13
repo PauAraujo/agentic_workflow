@@ -10,16 +10,14 @@ class TableSelectionDecision(BaseModel):
     """
 
     selection_reason: str = Field(
-        ...,
-        description="Why this table is needed for the query"
+        ..., description="Why this table is needed for the query"
     )
     qualified_name: str = Field(
-        ...,
-        description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
+        ..., description="Schema-qualified table name (e.g., 'ICSR.PATIENT')"
     )
     key_columns: list[str] = Field(
         default_factory=list,
-        description="Columns from this table relevant to the query (may be empty if used only for JOINs)"
+        description="Columns from this table relevant to the query (may be empty if used only for JOINs)",
     )
 
 
@@ -31,10 +29,8 @@ class TableSelectionResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     rationale: str = Field(
-        ...,
-        description="Brief explanation of the table selection strategy"
+        ..., description="Brief explanation of the table selection strategy"
     )
     selected_tables: list[TableSelectionDecision] = Field(
-        default_factory=list,
-        description="All tables selected as needed for the query"
+        default_factory=list, description="All tables selected as needed for the query"
     )

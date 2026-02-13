@@ -27,7 +27,7 @@ def persist_results(state: WorkflowState, settings: Settings) -> WorkflowState:
     sql_draft = state.get("sql_draft")
     if not sql_draft:
         logger.warning("Missing sql_draft for persistence. Skipping save.")
-        return {} # no state update
+        return {}  # no state update
 
     run_id = save_workflow_results(state, settings)
     return {"run_id": run_id}

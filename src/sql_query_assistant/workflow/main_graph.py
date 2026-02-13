@@ -6,14 +6,15 @@ from langgraph.graph import END, StateGraph
 from sql_query_assistant.config import Settings
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.state import WorkflowState
-from sql_query_assistant.modules.table_card_retriever import retrieve_relevant_table_cards
+from sql_query_assistant.modules.table_card_retriever import (
+    retrieve_relevant_table_cards,
+)
 from sql_query_assistant.modules.table_selector import select_tables
 from sql_query_assistant.modules.sql_drafter import draft_sql
 from sql_query_assistant.modules.sql_validator import validate_sql
 from sql_query_assistant.modules.sql_repairer import repair_sql
 from sql_query_assistant.modules.sql_executor import execute_sql
 from sql_query_assistant.persistence import persist_results
-
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +72,15 @@ def route_after_validation(state: WorkflowState, settings: Settings) -> str:
     if repair_attempts >= settings.max_repair_attempts:
         logger.warning(
             "Validation failed after %d repair attempts; reporting failure",
-            repair_attempts
+            repair_attempts,
         )
         return "exhausted"
 
-    logger.info("Validation failed; attempting repair (attempt %d/%d)",
-               repair_attempts + 1, settings.max_repair_attempts)
+    logger.info(
+        "Validation failed; attempting repair (attempt %d/%d)",
+        repair_attempts + 1,
+        settings.max_repair_attempts,
+    )
     return "retry"
 
 
@@ -181,7 +185,7 @@ def build_main_graph(
             "passed": "sql_executor",
             "retry": "sql_repairer",
             "exhausted": "validation_failed",
-        }
+        },
     )
 
     # After repair, go back to validation

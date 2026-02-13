@@ -31,6 +31,7 @@ from sql_query_assistant.workflow import WorkflowRunner, NodeEvent
 
 load_dotenv(override=True)
 
+
 def _render_generated_sql(state: dict[str, Any]):
     """Render the generated SQL"""
     sql_draft = state.get("sql_draft")
@@ -156,14 +157,29 @@ def main():
                         for step_node, step_desc in all_steps:
                             if step_node in completed_nodes:
                                 detail = ""
-                                if step_node == "table_selector" and accumulated_state.get("table_cards_with_selection"):
+                                if (
+                                    step_node == "table_selector"
+                                    and accumulated_state.get(
+                                        "table_cards_with_selection"
+                                    )
+                                ):
                                     detail = f" ({len(accumulated_state['table_cards_with_selection'])} tables)"
-                                elif step_node == "sql_validator" and accumulated_state.get("validation_result"):
+                                elif (
+                                    step_node == "sql_validator"
+                                    and accumulated_state.get("validation_result")
+                                ):
                                     vr = accumulated_state["validation_result"]
                                     detail = " ✓" if vr.is_valid else " (needs repair)"
-                                elif step_node == "sql_executor" and accumulated_state.get("query_result"):
+                                elif (
+                                    step_node == "sql_executor"
+                                    and accumulated_state.get("query_result")
+                                ):
                                     qr = accumulated_state["query_result"]
-                                    detail = f" ({qr.row_count} rows)" if qr.success else " (failed)"
+                                    detail = (
+                                        f" ({qr.row_count} rows)"
+                                        if qr.success
+                                        else " (failed)"
+                                    )
                                 steps_md.append(f"✅ {step_desc}{detail}")
                             else:
                                 steps_md.append(f"⬜ {step_desc}")
@@ -178,21 +194,33 @@ def main():
                         on_progress=handle_progress,
                     )
 
-                    status.update(label="Workflow complete!", state="complete", expanded=False)
+                    status.update(
+                        label="Workflow complete!", state="complete", expanded=False
+                    )
 
                     # Store final steps for display after rerun
                     final_steps_md = []
                     for step_node, step_desc in all_steps:
                         if step_node in completed_nodes:
                             detail = ""
-                            if step_node == "table_selector" and accumulated_state.get("table_cards_with_selection"):
+                            if step_node == "table_selector" and accumulated_state.get(
+                                "table_cards_with_selection"
+                            ):
                                 detail = f" ({len(accumulated_state['table_cards_with_selection'])} tables)"
-                            elif step_node == "sql_validator" and accumulated_state.get("validation_result"):
+                            elif step_node == "sql_validator" and accumulated_state.get(
+                                "validation_result"
+                            ):
                                 vr = accumulated_state["validation_result"]
                                 detail = " ✓" if vr.is_valid else " (needs repair)"
-                            elif step_node == "sql_executor" and accumulated_state.get("query_result"):
+                            elif step_node == "sql_executor" and accumulated_state.get(
+                                "query_result"
+                            ):
                                 qr = accumulated_state["query_result"]
-                                detail = f" ({qr.row_count} rows)" if qr.success else " (failed)"
+                                detail = (
+                                    f" ({qr.row_count} rows)"
+                                    if qr.success
+                                    else " (failed)"
+                                )
                             final_steps_md.append(f"✅ {step_desc}{detail}")
                         else:
                             final_steps_md.append(f"⬜ {step_desc}")
@@ -204,6 +232,7 @@ def main():
 
             except Exception as exc:
                 import traceback
+
                 st.error(f"Workflow failed: {exc}")
                 st.code(traceback.format_exc(), language="python")
 

@@ -7,8 +7,12 @@ class ValidationResult(BaseModel):
     original_sql: str = Field(..., description="SQL query from drafter")
 
     # Validation errors (source of truth)
-    syntax_errors: list[str] = Field(default_factory=list, description="Syntax errors from SQLGlot parsing")
-    explain_errors: list[str] = Field(default_factory=list, description="Errors from EXPLAIN dry-run")
+    syntax_errors: list[str] = Field(
+        default_factory=list, description="Syntax errors from SQLGlot parsing"
+    )
+    explain_errors: list[str] = Field(
+        default_factory=list, description="Errors from EXPLAIN dry-run"
+    )
 
     @computed_field
     @property

@@ -30,18 +30,18 @@ if not all([DB_HOST, DB_SERVICE, DB_USER, DB_PASSWORD]):
     )
 
 # Target schema to export
-TARGET_SCHEMA = 'ICSR_EMA'
-BASE_OUTPUT_DIRECTORY = '../input/db_exports'
+TARGET_SCHEMA = "ICSR_EMA"
+BASE_OUTPUT_DIRECTORY = "../input/db_exports"
 
 # Export constants
 CSV_ROW_LIMIT = 1000
-METADATA_FILENAME = '_metadata.json'
-SEPARATOR = '-' * 40
+METADATA_FILENAME = "_metadata.json"
+SEPARATOR = "-" * 40
 
 # Oracle constants
-ORACLE_COLUMN_NOT_FOUND_ERROR = 'ORA-00904'
-ORACLE_SYSTEM_OWNER = 'SYS'
-FOREIGN_KEY_CONSTRAINT_TYPE = 'R'
+ORACLE_COLUMN_NOT_FOUND_ERROR = "ORA-00904"
+ORACLE_SYSTEM_OWNER = "SYS"
+FOREIGN_KEY_CONSTRAINT_TYPE = "R"
 
 # System table exclusion filters
 SYSTEM_TABLE_FILTERS = """
@@ -54,39 +54,40 @@ SYSTEM_TABLE_FILTERS = """
 """
 
 # Oracle data dictionary view names
-ALL_TABLES_VIEW = 'all_tables'
-ALL_TAB_COMMENTS_VIEW = 'all_tab_comments'
-ALL_TAB_COLUMNS_VIEW = 'all_tab_columns'
-ALL_COL_COMMENTS_VIEW = 'all_col_comments'
-ALL_CONSTRAINTS_VIEW = 'all_constraints'
-ALL_CONS_COLUMNS_VIEW = 'all_cons_columns'
-ALL_INDEXES_VIEW = 'all_indexes'
-ALL_IND_COLUMNS_VIEW = 'all_ind_columns'
-ALL_TRIGGERS_VIEW = 'all_triggers'
-ALL_SYNONYMS_VIEW = 'all_synonyms'
-ALL_TAB_PRIVS_VIEW = 'all_tab_privs'
+ALL_TABLES_VIEW = "all_tables"
+ALL_TAB_COMMENTS_VIEW = "all_tab_comments"
+ALL_TAB_COLUMNS_VIEW = "all_tab_columns"
+ALL_COL_COMMENTS_VIEW = "all_col_comments"
+ALL_CONSTRAINTS_VIEW = "all_constraints"
+ALL_CONS_COLUMNS_VIEW = "all_cons_columns"
+ALL_INDEXES_VIEW = "all_indexes"
+ALL_IND_COLUMNS_VIEW = "all_ind_columns"
+ALL_TRIGGERS_VIEW = "all_triggers"
+ALL_SYNONYMS_VIEW = "all_synonyms"
+ALL_TAB_PRIVS_VIEW = "all_tab_privs"
 
 # Common column names
-COL_OWNER = 'owner'
-COL_TABLE_NAME = 'table_name'
-COL_COLUMN_NAME = 'column_name'
-COL_CONSTRAINT_NAME = 'constraint_name'
+COL_OWNER = "owner"
+COL_TABLE_NAME = "table_name"
+COL_COLUMN_NAME = "column_name"
+COL_CONSTRAINT_NAME = "constraint_name"
 
 # Parameter names
-PARAM_SCHEMA_NAME = 'schema_name'
-PARAM_OWNER = 'owner'
-PARAM_VIEW_NAME = 'view_name'
+PARAM_SCHEMA_NAME = "schema_name"
+PARAM_OWNER = "owner"
+PARAM_VIEW_NAME = "view_name"
 
 # Grant-related column names
-COL_GRANTEE = 'grantee'
-COL_PRIVILEGE = 'privilege'
-COL_GRANTABLE = 'grantable'
-COL_TYPE = 'type'
-COL_HIERARCHY = 'hierarchy'
+COL_GRANTEE = "grantee"
+COL_PRIVILEGE = "privilege"
+COL_GRANTABLE = "grantable"
+COL_TYPE = "type"
+COL_HIERARCHY = "hierarchy"
 
 # Legacy column name (for compatibility)
 OWNER_COLUMN = COL_OWNER
-TABLE_SCHEMA_COLUMN = 'table_schema'
+TABLE_SCHEMA_COLUMN = "table_schema"
+
 
 def get_output_directory(schema_name: str, base_output_dir: str) -> str:
     """
@@ -99,18 +100,18 @@ def get_output_directory(schema_name: str, base_output_dir: str) -> str:
     schema_upper = schema_name.upper()
     return os.path.join(base_output_dir, schema_upper)
 
+
 def get_connection() -> oracledb.Connection:
     """Establishes a connection to the Oracle database."""
     dsn = oracledb.makedsn(DB_HOST, DB_PORT, service_name=DB_SERVICE)
-    connection = oracledb.connect(
-        user=DB_USER,
-        password=DB_PASSWORD,
-        dsn=dsn
-    )
+    connection = oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=dsn)
     print("Successfully connected to the database.")
     return connection
 
-def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> list[str]:
+
+def get_tables_in_schema(
+    connection: oracledb.Connection, schema_name: str
+) -> list[str]:
     """
     Retrieves a list of table names for the given schema, excluding Oracle system tables.
 
@@ -129,12 +130,17 @@ def get_tables_in_schema(connection: oracledb.Connection, schema_name: str) -> l
     try:
         cursor.execute(query, **{PARAM_SCHEMA_NAME: schema_name.upper()})
         tables = [row[0] for row in cursor.fetchall()]
-        print(f"Found {len(tables)} tables in schema '{schema_name}' (excluding Oracle system tables).")
+        print(
+            f"Found {len(tables)} tables in schema '{schema_name}' (excluding Oracle system tables)."
+        )
         return tables
     finally:
         cursor.close()
 
-def export_table_to_csv(connection: oracledb.Connection, schema_name: str, table_name: str, output_dir: str) -> None:
+
+def export_table_to_csv(
+    connection: oracledb.Connection, schema_name: str, table_name: str, output_dir: str
+) -> None:
     """
     Exports the first N rows of a specific table to CSV.
 
@@ -165,13 +171,20 @@ def export_table_to_csv(connection: oracledb.Connection, schema_name: str, table
     except oracledb.DatabaseError as e:
         print(f"Skipped {table_name}: {e}")
     except TypeError as e:
-        print(f"Skipped {table_name}: Cannot convert data to CSV (likely contains binary/BLOB data): {e}")
+        print(
+            f"Skipped {table_name}: Cannot convert data to CSV (likely contains binary/BLOB data): {e}"
+        )
     except UnicodeDecodeError as e:
-        print(f"Skipped {table_name}: Unicode decoding error (likely contains non-UTF-8 data): {e}")
+        print(
+            f"Skipped {table_name}: Unicode decoding error (likely contains non-UTF-8 data): {e}"
+        )
     finally:
         cursor.close()
 
-def fetch_rows(connection: oracledb.Connection, query: str, params: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+
+def fetch_rows(
+    connection: oracledb.Connection, query: str, params: Optional[dict[str, Any]] = None
+) -> list[dict[str, Any]]:
     """
     Executes a query and returns rows as a list of dicts.
 
@@ -188,6 +201,7 @@ def fetch_rows(connection: oracledb.Connection, query: str, params: Optional[dic
     finally:
         cursor.close()
 
+
 def json_default(value: Any) -> str:
     """JSON serializer for objects not serializable by default json code."""
     if hasattr(value, "isoformat"):
@@ -199,12 +213,13 @@ def json_default(value: Any) -> str:
         return value.decode("utf-8", errors="replace")
     return str(value)
 
+
 def fetch_rows_with_optional_columns(
     connection: oracledb.Connection,
     select_from_where: str,
     base_cols: list[str],
     optional_cols: list[str],
-    params: Optional[dict[str, Any]] = None
+    params: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     """
     Executes a query with optional columns, retrying if columns are unsupported.
@@ -224,7 +239,10 @@ def fetch_rows_with_optional_columns(
             return fetch_rows(connection, query, params=params)
         except oracledb.DatabaseError as exc:
             error_message = str(exc)
-            if ORACLE_COLUMN_NOT_FOUND_ERROR not in error_message or '"' not in error_message:
+            if (
+                ORACLE_COLUMN_NOT_FOUND_ERROR not in error_message
+                or '"' not in error_message
+            ):
                 raise
             missing = error_message.split('"')[1].lower()
             if missing in remaining_optional:
@@ -233,7 +251,10 @@ def fetch_rows_with_optional_columns(
                 continue
             raise
 
-def get_view_columns(connection: oracledb.Connection, view_name: str, owner: str = ORACLE_SYSTEM_OWNER) -> set[str]:
+
+def get_view_columns(
+    connection: oracledb.Connection, view_name: str, owner: str = ORACLE_SYSTEM_OWNER
+) -> set[str]:
     """
     Returns a set of lowercased column names for a data dictionary view.
 
@@ -253,7 +274,10 @@ def get_view_columns(connection: oracledb.Connection, view_name: str, owner: str
     )
     return {row[COL_COLUMN_NAME].lower() for row in rows}
 
-def export_schema_metadata(connection: oracledb.Connection, schema_name: str, output_dir: str) -> None:
+
+def export_schema_metadata(
+    connection: oracledb.Connection, schema_name: str, output_dir: str
+) -> None:
     """
     Exports schema metadata to a JSON file.
 
@@ -454,8 +478,11 @@ def export_schema_metadata(connection: oracledb.Connection, schema_name: str, ou
         json.dump(metadata, f, indent=2, default=json_default)
     print(f"Wrote metadata to {metadata_path}")
 
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export Oracle schema data and metadata.")
+    parser = argparse.ArgumentParser(
+        description="Export Oracle schema data and metadata."
+    )
     parser.add_argument(
         "--export-data",
         action="store_true",
@@ -467,6 +494,7 @@ def parse_args() -> argparse.Namespace:
         help="Export schema metadata to JSON.",
     )
     return parser.parse_args()
+
 
 def run_exports() -> None:
     args = parse_args()
@@ -494,6 +522,7 @@ def run_exports() -> None:
     conn.close()
     print(SEPARATOR)
     print("Export process completed.")
+
 
 if __name__ == "__main__":
     run_exports()

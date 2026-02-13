@@ -11,6 +11,7 @@ sys.path.append(str(Path(__file__).parents[1]))
 
 DB_EXPORTS_DIR = "db_exports"
 
+
 def build_schema(
     schema_name: str,
     source_file: Path,
@@ -36,9 +37,9 @@ def build_schema(
 
     # Load data
     print(f"Loading data from {source_file}...")
-    if source_file.suffix == '.csv':
+    if source_file.suffix == ".csv":
         df = pd.read_csv(source_file)
-    elif source_file.suffix in ('.xlsx', '.xls'):
+    elif source_file.suffix in (".xlsx", ".xls"):
         df = pd.read_excel(source_file)
     else:
         raise ValueError(f"Unknown format: {source_file}")
@@ -60,6 +61,7 @@ def build_schema(
     finally:
         conn.close()
 
+
 def main():
     settings = Settings()
 
@@ -74,7 +76,8 @@ def main():
 
     for schema_dir in schema_dirs:
         csv_files = [
-            path for path in sorted(schema_dir.iterdir())
+            path
+            for path in sorted(schema_dir.iterdir())
             if path.is_file() and path.suffix.lower() == ".csv"
         ]
         if not csv_files:
@@ -88,6 +91,7 @@ def main():
                 settings,
                 reset_db=(index == 0),
             )
+
 
 if __name__ == "__main__":
     main()

@@ -34,8 +34,7 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
     if not sql_draft:
         logger.warning("No SQL draft found in state; skipping validation")
         result = ValidationResult(
-            original_sql="",
-            syntax_errors=["No SQL draft available to validate"]
+            original_sql="", syntax_errors=["No SQL draft available to validate"]
         )
         validation_history.append(result)
         return {
@@ -54,9 +53,9 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
         parsed_ast = parse_one(sql, read=dialect)
         logger.debug("SQLGlot syntax validation passed")
 
-
         # Security check: ensure query is read-only (SELECT or CTE)
         from sqlglot.expressions import Select, With
+
         if not isinstance(parsed_ast, (Select, With)):
             error_msg = (
                 f"Query type not allowed: {type(parsed_ast).__name__}. "
@@ -65,7 +64,10 @@ def validate_sql(state: WorkflowState, settings: Settings) -> dict:
             result.syntax_errors.append(error_msg)
             logger.error(error_msg)
             validation_history.append(result)
-            return {"validation_result": result, "validation_history": validation_history}
+            return {
+                "validation_result": result,
+                "validation_history": validation_history,
+            }
 
     except ParseError as e:
         error_msg = f"SQL syntax error: {str(e)}"

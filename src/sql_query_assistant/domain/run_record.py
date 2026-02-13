@@ -12,6 +12,7 @@ from sql_query_assistant.domain.table_selection import (
     TableSelectionDecision,
     TableSelectionResponse,
 )
+
 if TYPE_CHECKING:
     from sql_query_assistant.config import Settings
     from sql_query_assistant.state import WorkflowState
@@ -312,58 +313,70 @@ class RunRecord(BaseModel):
             elif validation_result and not final_passed:
                 errors = validation_result.get_all_errors()
 
-            attempts.append(SQLAttempt(
-                attempt=1,
-                attempt_type="draft",
-                sql=sql_draft.sql,
-                rationale=sql_draft.rationale,
-                tables_used=extract_tables_from_sql(sql_draft.sql, dialect),
-                validation_passed=final_passed,
-                validation_errors=errors,
-            ))
+            attempts.append(
+                SQLAttempt(
+                    attempt=1,
+                    attempt_type="draft",
+                    sql=sql_draft.sql,
+                    rationale=sql_draft.rationale,
+                    tables_used=extract_tables_from_sql(sql_draft.sql, dialect),
+                    validation_passed=final_passed,
+                    validation_errors=errors,
+                )
+            )
         else:
             # Repairs occurred: repair_history = [original_draft, repair1, repair2, ...]
             # validation_history = [validation1, validation2, ...] aligned by index
 
             # First entry is the original draft that failed validation
             first_errors = (
-                validation_history[0].get_all_errors()
-                if validation_history
-                else []
+                validation_history[0].get_all_errors() if validation_history else []
             )
-            attempts.append(SQLAttempt(
-                attempt=1,
-                attempt_type="draft",
-                sql=repair_history[0].sql,
-                rationale=repair_history[0].rationale,
-                tables_used=extract_tables_from_sql(repair_history[0].sql, dialect),
-                validation_passed=False,
-                validation_errors=first_errors,
-            ))
+            attempts.append(
+                SQLAttempt(
+                    attempt=1,
+                    attempt_type="draft",
+                    sql=repair_history[0].sql,
+                    rationale=repair_history[0].rationale,
+                    tables_used=extract_tables_from_sql(repair_history[0].sql, dialect),
+                    validation_passed=False,
+                    validation_errors=first_errors,
+                )
+            )
 
             # Subsequent entries are repair attempts
             for attempt_num, repair_draft in enumerate(repair_history[1:], start=2):
-                is_final = (attempt_num == len(repair_history))
+                is_final = attempt_num == len(repair_history)
                 # validation_history index is attempt_num-1 (0-indexed)
                 validation_idx = attempt_num - 1
                 if validation_idx < len(validation_history):
                     attempt_validation = validation_history[validation_idx]
                     attempt_passed = attempt_validation.is_valid
-                    attempt_errors = attempt_validation.get_all_errors() if not attempt_passed else []
+                    attempt_errors = (
+                        attempt_validation.get_all_errors()
+                        if not attempt_passed
+                        else []
+                    )
                 else:
                     # Fallback: shouldn't happen, but handle gracefully
                     attempt_passed = is_final and final_passed
-                    attempt_errors = validation_result.get_all_errors() if is_final and not final_passed else []
+                    attempt_errors = (
+                        validation_result.get_all_errors()
+                        if is_final and not final_passed
+                        else []
+                    )
 
-                attempts.append(SQLAttempt(
-                    attempt=attempt_num,
-                    attempt_type="repair",
-                    sql=repair_draft.sql,
-                    rationale=repair_draft.rationale,
-                    tables_used=extract_tables_from_sql(repair_draft.sql, dialect),
-                    validation_passed=attempt_passed,
-                    validation_errors=attempt_errors,
-                ))
+                attempts.append(
+                    SQLAttempt(
+                        attempt=attempt_num,
+                        attempt_type="repair",
+                        sql=repair_draft.sql,
+                        rationale=repair_draft.rationale,
+                        tables_used=extract_tables_from_sql(repair_draft.sql, dialect),
+                        validation_passed=attempt_passed,
+                        validation_errors=attempt_errors,
+                    )
+                )
 
         return DraftingAndValidation(attempts=attempts)
 
@@ -388,8 +401,12 @@ class RunRecord(BaseModel):
             # models
             "drafter_provider": self.config.agents.drafter.provider,
             "drafter_model": self.config.agents.drafter.model_name,
-            "repairer_provider": self.config.agents.repairer.provider if has_repairs else "",
-            "repairer_model": self.config.agents.repairer.model_name if has_repairs else "",
+            "repairer_provider": (
+                self.config.agents.repairer.provider if has_repairs else ""
+            ),
+            "repairer_model": (
+                self.config.agents.repairer.model_name if has_repairs else ""
+            ),
             # SQL output
             "final_sql": dv.final_sql or "",
             "sql_dialect": self.config.target_sql_dialect,

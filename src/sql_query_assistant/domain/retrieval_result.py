@@ -19,17 +19,15 @@ class RetrievalResult(BaseModel):
 
     tables_from_search: list[str] = Field(
         default_factory=list,
-        description="Tables returned from initial search (search_top_k candidates)"
+        description="Tables returned from initial search (search_top_k candidates)",
     )
     tables_after_rerank: list[str] = Field(
         default_factory=list,
-        description="Tables selected after semantic reranking (reranker_top_k)"
+        description="Tables selected after semantic reranking (reranker_top_k)",
     )
     tables_from_fk_expansion: list[str] = Field(
-        default_factory=list,
-        description="Tables added via FK relationship expansion"
+        default_factory=list, description="Tables added via FK relationship expansion"
     )
     tables_final: list[str] = Field(
-        default_factory=list,
-        description="Final table list (reranked + FK expanded)"
+        default_factory=list, description="Final table list (reranked + FK expanded)"
     )
