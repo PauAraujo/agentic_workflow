@@ -1,296 +1,271 @@
-import os
+import csv
 import json
 import oracledb
 import argparse
 
-import pandas as pd
-
 from pathlib import Path
-from dotenv import load_dotenv
-from typing import Any, Optional
+from typing import Any
 from datetime import datetime, timezone
 
-# Load environment variables from project root .env
-# override=True ensures .env values take precedence over system env vars
+from sql_query_assistant.config import DatabaseSettings
+
 project_root = Path(__file__).resolve().parents[1]
-load_dotenv(project_root / ".env", override=True)
 
-# Oracle configuration
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = int(os.getenv("DB_PORT", "1521"))
-DB_SERVICE = os.getenv("DB_SERVICE")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-
-# Validate required DB credentials are set
-if not all([DB_HOST, DB_SERVICE, DB_USER, DB_PASSWORD]):
-    raise ValueError(
-        "Missing required database credentials in .env file. "
-        "Please set DB_HOST, DB_PORT, DB_SERVICE, DB_USER, and DB_PASSWORD"
-    )
-
-# Target schema to export
-TARGET_SCHEMA = "ICSR_EMA"
-BASE_OUTPUT_DIRECTORY = "../input/db_exports"
-
-# Export constants
+# Defaults
+DEFAULT_SCHEMA = "ICSR_EMA"
+BASE_OUTPUT_DIRECTORY = project_root / "input" / "db_exports"
 CSV_ROW_LIMIT = 1000
 METADATA_FILENAME = "_metadata.json"
 SEPARATOR = "-" * 40
 
 # Oracle constants
-ORACLE_COLUMN_NOT_FOUND_ERROR = "ORA-00904"
-ORACLE_SYSTEM_OWNER = "SYS"
-FOREIGN_KEY_CONSTRAINT_TYPE = "R"
-
-# System table exclusion filters
+ORACLE_COLUMN_NOT_FOUND_ERROR = "ORA-00904"  # raised when a SELECT references a non-existent column
+FOREIGN_KEY_CONSTRAINT_TYPE = "R"  # Oracle constraint_type value for foreign keys
+# SQL fragment appended to WHERE clauses to exclude Oracle internal/system tables
 SYSTEM_TABLE_FILTERS = """
     AND {table_col} NOT LIKE 'DR$%'
     AND {table_col} NOT LIKE 'BIN$%'
     AND {table_col} NOT LIKE 'MLOG$%'
     AND {table_col} NOT LIKE 'RUPD$%'
-    AND {table_col} NOT LIKE 'ZZ_%'
+    AND {table_col} NOT LIKE 'ZZ\\_%' ESCAPE '\\'
     AND {table_col} NOT LIKE 'RV$%'
 """
 
-# Oracle data dictionary view names
-ALL_TABLES_VIEW = "all_tables"
-ALL_TAB_COMMENTS_VIEW = "all_tab_comments"
-ALL_TAB_COLUMNS_VIEW = "all_tab_columns"
-ALL_COL_COMMENTS_VIEW = "all_col_comments"
-ALL_CONSTRAINTS_VIEW = "all_constraints"
-ALL_CONS_COLUMNS_VIEW = "all_cons_columns"
-ALL_INDEXES_VIEW = "all_indexes"
-ALL_IND_COLUMNS_VIEW = "all_ind_columns"
-ALL_TRIGGERS_VIEW = "all_triggers"
-ALL_SYNONYMS_VIEW = "all_synonyms"
-ALL_TAB_PRIVS_VIEW = "all_tab_privs"
+# Oracle data dictionary view and column name constants
+# Used to build queries against Oracle's metadata catalog
+ALL_TABLES_VIEW = "all_tables"  # table-level info (row counts, tablespace, etc.)
+ALL_TAB_COMMENTS_VIEW = "all_tab_comments"  # table-level comments
+ALL_TAB_COLUMNS_VIEW = "all_tab_columns"  # column definitions (type, length, nullable)
+ALL_COL_COMMENTS_VIEW = "all_col_comments"  # column-level comments
+ALL_CONSTRAINTS_VIEW = "all_constraints"  # PKs, FKs, unique, check constraints
+ALL_CONS_COLUMNS_VIEW = "all_cons_columns"  # which columns belong to each constraint
+ALL_INDEXES_VIEW = "all_indexes"  # index definitions
+ALL_IND_COLUMNS_VIEW = "all_ind_columns"  # which columns belong to each index
+ALL_TRIGGERS_VIEW = "all_triggers"  # trigger definitions
+ALL_SYNONYMS_VIEW = "all_synonyms"  # synonym aliases for tables/views
 
-# Common column names
-COL_OWNER = "owner"
-COL_TABLE_NAME = "table_name"
-COL_COLUMN_NAME = "column_name"
-COL_CONSTRAINT_NAME = "constraint_name"
+# Column names shared across multiple dictionary views (used in SELECT and WHERE clauses)
+OWNER_COL = "owner"
+TABLE_NAME_COL = "table_name"
+COLUMN_NAME_COL = "column_name"
+CONSTRAINT_NAME_COL = "constraint_name"
 
-# Parameter names
+# Bind-variable names used in parameterised queries
 PARAM_SCHEMA_NAME = "schema_name"
-PARAM_OWNER = "owner"
-PARAM_VIEW_NAME = "view_name"
-
-# Grant-related column names
-COL_GRANTEE = "grantee"
-COL_PRIVILEGE = "privilege"
-COL_GRANTABLE = "grantable"
-COL_TYPE = "type"
-COL_HIERARCHY = "hierarchy"
-
-# Legacy column name (for compatibility)
-OWNER_COLUMN = COL_OWNER
-TABLE_SCHEMA_COLUMN = "table_schema"
-
-
-def get_output_directory(schema_name: str, base_output_dir: str) -> str:
-    """
-    Builds the output directory path for the target schema.
-
-    Args:
-        schema_name: Name of the schema.
-        base_output_dir: Base directory for exports.
-    """
-    schema_upper = schema_name.upper()
-    return os.path.join(base_output_dir, schema_upper)
 
 
 def get_connection() -> oracledb.Connection:
-    """Establishes a connection to the Oracle database."""
-    dsn = oracledb.makedsn(DB_HOST, DB_PORT, service_name=DB_SERVICE)
-    connection = oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=dsn)
+    """
+    Connect to Oracle using credentials from DatabaseSettings (loaded from .env).
+
+    Requires DB_TYPE=oracle in .env so that DatabaseSettings validates
+    all Oracle credentials (DB_HOST, DB_SERVICE, DB_USER, DB_PASSWORD).
+    """
+    db = DatabaseSettings()
+    dsn = oracledb.makedsn(
+        db.oracle_host,
+        db.oracle_port,
+        service_name=db.oracle_service
+    )
+    connection = oracledb.connect(
+        user=db.oracle_user,
+        password=db.oracle_password,
+        dsn=dsn
+    )
     print("Successfully connected to the database.")
     return connection
 
 
-def get_tables_in_schema(
+def fetch_rows(
+        connection: oracledb.Connection,
+        sql_query: str,
+        params: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """
+    Execute a query and return every row as a dict mapping column names to values.
+
+    Args:
+        connection: Active database connection
+        sql_query: SQL query to execute
+        params: Optional dict of bind variables for parameterised queries
+
+    Returns:
+        List of rows, where each row is a dict mapping column names to values
+    """
+
+    cursor = connection.cursor()
+    try:
+        cursor.execute(sql_query, params or {})
+        col_names = [desc[0].lower() for desc in cursor.description]
+        rows = [dict(zip(col_names, row)) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+    return rows
+
+
+def fetch_rows_with_optional_columns(
+    connection: oracledb.Connection,
+    from_where_clause: str,
+    base_cols: list[str],
+    optional_cols: list[str],
+    params: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Execute a query with graceful degradation for optional columns.
+
+    Tries to SELECT base_cols + optional_cols. base_cols MUST exist (errors
+    are raised). optional_cols MAY not exist on older Oracle versions.
+    If Oracle reports one is missing (ORA-00904), it is silently dropped
+    and the query retried.
+
+    Args:
+        connection: Active database connection
+        from_where_clause: SQL fragment containing FROM and WHERE clauses (without SELECT)
+        base_cols: List of column names that must be selected (lowercase)
+        optional_cols: List of column names that are nice-to-have but may not exist on all Oracle versions (lowercase)
+        params: Optional dict of bind variables for parameterised queries
+
+    Returns:
+        List of rows, where each row is a dict mapping column names to values.
+        Columns from optional_cols that were dropped due to missing-column errors will simply be absent from the dicts.
+    """
+    remaining_optional = optional_cols.copy() # copy so .remove() below doesn't modify the original
+    cols_to_select = base_cols + remaining_optional
+    while True:
+        query = f"SELECT {', '.join(cols_to_select)} {from_where_clause}"
+        try:
+            return fetch_rows(connection, query, params=params)
+        except oracledb.DatabaseError as exc:
+            # Oracle errors look like: ORA-00904: invalid identifier "VIRTUAL_COLUMN"
+            # we only handle missing-column errors for optional columns; everything else is re-raised
+            error_message = str(exc)
+            # check if Oracle reported an invalid identifier (ORA-00904)
+            is_column_not_found = ORACLE_COLUMN_NOT_FOUND_ERROR in error_message
+            # check that quotes exist before attempting to parse
+            can_parse_column_name = '"' in error_message
+            # If it's not a missing column error, or if we can't parse the missing column name
+            if not is_column_not_found or not can_parse_column_name:
+                raise #  re-raise the unexpected error, instead of silently dropping columns
+
+            # We know a column is missing, but which column?
+            missing = error_message.split('"')[1].lower()
+            if missing not in remaining_optional:
+                raise  # a required column is missing, that's a real error
+
+            # We only silently drop columns explicitly marked as optional
+            remaining_optional.remove(missing)
+            cols_to_select = base_cols + remaining_optional
+            continue
+
+
+def json_default(value: Any) -> str:
+    """
+    Fallback serialiser for json.dump. Converts Oracle types
+    (datetime, RAW/BLOB bytes, LOB handles) to JSON-safe strings
+    """
+    # Handle datetime and date types with isoformat
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    # Handle RAW/BLOB types returned as bytes or bytearray by oracledb
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def get_table_names_in_schema(
     connection: oracledb.Connection, schema_name: str
 ) -> list[str]:
     """
-    Retrieves a list of table names for the given schema, excluding Oracle system tables.
+    List all user tables in a schema, excluding Oracle internal/system tables.
 
     Args:
-        connection: Active Oracle database connection.
-        schema_name: Name of the schema to query.
+        connection: Active database connection
+        schema_name: Name of the schema to list tables from
+
+    Returns:
+        List of table names in the specified schema
     """
-    cursor = connection.cursor()
-    filters = SYSTEM_TABLE_FILTERS.format(table_col=COL_TABLE_NAME)
+    filters = SYSTEM_TABLE_FILTERS.format(table_col=TABLE_NAME_COL)
     query = f"""
-        SELECT {COL_TABLE_NAME}
+        SELECT {TABLE_NAME_COL}
         FROM {ALL_TABLES_VIEW}
-        WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+        WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
         {filters}
     """
-    try:
-        cursor.execute(query, **{PARAM_SCHEMA_NAME: schema_name.upper()})
-        tables = [row[0] for row in cursor.fetchall()]
-        print(
-            f"Found {len(tables)} tables in schema '{schema_name}' (excluding Oracle system tables)."
-        )
-        return tables
-    finally:
-        cursor.close()
+    rows = fetch_rows(
+        connection,
+        query,
+        params={PARAM_SCHEMA_NAME: schema_name.upper()}
+    )
+    print(
+        f"Found {len(rows)} tables in schema '{schema_name}' (excluding Oracle system tables)."
+    )
+    return [row[TABLE_NAME_COL] for row in rows]
 
 
 def export_table_to_csv(
-    connection: oracledb.Connection, schema_name: str, table_name: str, output_dir: str
+    connection: oracledb.Connection,
+    schema_name: str,
+    table_name: str,
+    output_dir: Path
 ) -> None:
     """
-    Exports the first N rows of a specific table to CSV.
+    Export a sample of rows from an Oracle table to a CSV file.
+
+    Queries up to CSV_ROW_LIMIT rows from {schema_name}.{table_name} and writes
+    them to {output_dir}/{table_name}.csv. Tables that can't be exported
+    (e.g. binary/BLOB data, encoding issues, permission errors) are skipped
+    with a warning.
 
     Args:
-        connection: Active Oracle database connection.
-        schema_name: Name of the schema containing the table.
-        table_name: Name of the table to export.
-        output_dir: Directory to save the CSV file.
+        connection: Active database connection
+        schema_name: Name of the schema containing the table
+        table_name: Name of the table to export
+        output_dir: Directory to write the CSV file to
     """
     query = f"""
         SELECT * FROM {schema_name}.{table_name}
         FETCH FIRST {CSV_ROW_LIMIT} ROWS ONLY
     """
 
-    cursor = connection.cursor()
     try:
-        cursor.execute(query)
-        columns = [col[0] for col in cursor.description]
-        rows = cursor.fetchall()
+        rows = fetch_rows(connection, query)
+        if not rows:
+            print(f"Skipped {table_name}: no rows returned")
+            return
 
-        # Convert to DataFrame
-        df = pd.DataFrame(rows, columns=columns)
-
-        filename = f"{table_name}.csv"
-        file_path = os.path.join(output_dir, filename)
-        df.to_csv(file_path, index=False)
-        print(f"Exported {len(df)} rows from {table_name} to {filename}")
+        file_path = output_dir / f"{table_name}.csv"
+        fieldnames = list(rows[0].keys()) # column names
+        with file_path.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader() # write first line (column names)
+            writer.writerows(rows) # write the data rows
+        print(f"Exported {len(rows)} rows from {table_name} to {file_path.name}")
     except oracledb.DatabaseError as e:
         print(f"Skipped {table_name}: {e}")
-    except TypeError as e:
-        print(
-            f"Skipped {table_name}: Cannot convert data to CSV (likely contains binary/BLOB data): {e}"
-        )
-    except UnicodeDecodeError as e:
-        print(
-            f"Skipped {table_name}: Unicode decoding error (likely contains non-UTF-8 data): {e}"
-        )
-    finally:
-        cursor.close()
 
 
-def fetch_rows(
-    connection: oracledb.Connection, query: str, params: Optional[dict[str, Any]] = None
-) -> list[dict[str, Any]]:
-    """
-    Executes a query and returns rows as a list of dicts.
-
-    Args:
-        connection: Active Oracle database connection.
-        query: SQL query to execute.
-        params: Optional dictionary of query parameters.
-    """
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, params or {})
-        columns = [col[0].lower() for col in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
-    finally:
-        cursor.close()
-
-
-def json_default(value: Any) -> str:
-    """JSON serializer for objects not serializable by default json code."""
-    if hasattr(value, "isoformat"):
-        try:
-            return value.isoformat()
-        except TypeError:
-            pass
-    if isinstance(value, (bytes, bytearray)):
-        return value.decode("utf-8", errors="replace")
-    return str(value)
-
-
-def fetch_rows_with_optional_columns(
-    connection: oracledb.Connection,
-    select_from_where: str,
-    base_cols: list[str],
-    optional_cols: list[str],
-    params: Optional[dict[str, Any]] = None,
-) -> list[dict[str, Any]]:
-    """
-    Executes a query with optional columns, retrying if columns are unsupported.
-
-    Args:
-        connection: Active Oracle database connection.
-        select_from_where: SQL fragment starting with FROM and including WHERE clause.
-        base_cols: List of mandatory column names.
-        optional_cols: List of optional column names.
-        params: Optional dictionary of query parameters.
-    """
-    remaining_optional = list(optional_cols)
-    select_cols = base_cols + remaining_optional
-    while True:
-        query = f"SELECT {', '.join(select_cols)} {select_from_where}"
-        try:
-            return fetch_rows(connection, query, params=params)
-        except oracledb.DatabaseError as exc:
-            error_message = str(exc)
-            if (
-                ORACLE_COLUMN_NOT_FOUND_ERROR not in error_message
-                or '"' not in error_message
-            ):
-                raise
-            missing = error_message.split('"')[1].lower()
-            if missing in remaining_optional:
-                remaining_optional.remove(missing)
-                select_cols = base_cols + remaining_optional
-                continue
-            raise
-
-
-def get_view_columns(
-    connection: oracledb.Connection, view_name: str, owner: str = ORACLE_SYSTEM_OWNER
-) -> set[str]:
-    """
-    Returns a set of lowercased column names for a data dictionary view.
-
-    Args:
-        connection: Active Oracle database connection.
-        view_name: Name of the data dictionary view.
-        owner: Owner of the view (default is ORACLE_SYSTEM_OWNER).
-    """
-    rows = fetch_rows(
-        connection,
-        f"""
-        SELECT {COL_COLUMN_NAME}
-        FROM {ALL_TAB_COLUMNS_VIEW}
-        WHERE {COL_OWNER} = :{PARAM_OWNER} AND {COL_TABLE_NAME} = :{PARAM_VIEW_NAME}
-        """,
-        {PARAM_OWNER: owner, PARAM_VIEW_NAME: view_name.upper()},
-    )
-    return {row[COL_COLUMN_NAME].lower() for row in rows}
-
-
-def export_schema_metadata(
-    connection: oracledb.Connection, schema_name: str, output_dir: str
+def export_schema_metadata_to_json(
+        connection: oracledb.Connection,
+        schema_name: str,
+        output_dir: Path
 ) -> None:
     """
-    Exports schema metadata to a JSON file.
+    Query Oracle's data dictionary and write a single JSON file containing
+    the full schema structure: tables, columns, comments, constraints,
+    foreign keys, indexes, triggers, and synonyms.
+
+    This JSON is later consumed by the table card generator,
+    to create table cards with rich metadata for the LLM.
 
     Args:
-        connection: Active Oracle database connection.
-        schema_name: Name of the schema to export metadata for.
-        output_dir: Directory to save the metadata JSON file.
+        connection: Active database connection
+        schema_name: Name of the schema to export metadata for
+        output_dir: Directory to write the JSON file to
     """
     schema_upper = schema_name.upper()
     schema_params = {PARAM_SCHEMA_NAME: schema_upper}
-
-    # Apply system table filters
-    table_filters = SYSTEM_TABLE_FILTERS.format(table_col=COL_TABLE_NAME)
+    table_filters = SYSTEM_TABLE_FILTERS.format(table_col=TABLE_NAME_COL)
 
     metadata = {
         "schema": schema_upper,
@@ -298,10 +273,10 @@ def export_schema_metadata(
         "tables": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, {COL_TABLE_NAME}, tablespace_name, temporary, partitioned,
+            SELECT {OWNER_COL}, {TABLE_NAME_COL}, tablespace_name, temporary, partitioned,
                    compression, logging, num_rows, last_analyzed
             FROM {ALL_TABLES_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
@@ -309,20 +284,20 @@ def export_schema_metadata(
         "table_comments": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, {COL_TABLE_NAME}, comments
+            SELECT {OWNER_COL}, {TABLE_NAME_COL}, comments
             FROM {ALL_TAB_COMMENTS_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
         ),
         "columns": fetch_rows_with_optional_columns(
             connection,
-            f"FROM {ALL_TAB_COLUMNS_VIEW} WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME} {table_filters}",
+            f"FROM {ALL_TAB_COLUMNS_VIEW} WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME} {table_filters}",
             base_cols=[
-                COL_OWNER,
-                COL_TABLE_NAME,
-                COL_COLUMN_NAME,
+                OWNER_COL,
+                TABLE_NAME_COL,
+                COLUMN_NAME_COL,
                 "column_id",
                 "data_type",
                 "data_length",
@@ -334,7 +309,7 @@ def export_schema_metadata(
                 "char_used",
                 "char_col_decl_length",
             ],
-            optional_cols=[
+            optional_cols=[  # not present on all Oracle versions; useful for DDL generation
                 "virtual_column",
                 "identity_column",
             ],
@@ -343,9 +318,9 @@ def export_schema_metadata(
         "column_comments": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, comments
+            SELECT {OWNER_COL}, {TABLE_NAME_COL}, {COLUMN_NAME_COL}, comments
             FROM {ALL_COL_COMMENTS_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
@@ -353,11 +328,11 @@ def export_schema_metadata(
         "constraints": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, {COL_CONSTRAINT_NAME}, constraint_type, {COL_TABLE_NAME},
+            SELECT {OWNER_COL}, {CONSTRAINT_NAME_COL}, constraint_type, {TABLE_NAME_COL},
                    search_condition, r_owner, r_constraint_name, delete_rule,
                    deferrable, deferred, status
             FROM {ALL_CONSTRAINTS_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
@@ -365,48 +340,54 @@ def export_schema_metadata(
         "constraint_columns": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, {COL_CONSTRAINT_NAME}, {COL_TABLE_NAME}, {COL_COLUMN_NAME}, position
+            SELECT {OWNER_COL}, {CONSTRAINT_NAME_COL}, {TABLE_NAME_COL}, {COLUMN_NAME_COL}, position
             FROM {ALL_CONS_COLUMNS_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
         ),
+        # Foreign keys require a 4-way join to resolve:
+        #   c   = FK constraint (type 'R')
+        #   cc  = columns of the FK constraint
+        #   rc  = the referenced (parent) constraint (PK/UK)
+        #   rcc = columns of the referenced constraint
+        # The cc.position = rcc.position join aligns composite FK columns correctly.
         "foreign_keys": fetch_rows(
             connection,
             f"""
-            SELECT c.{COL_OWNER}, c.{COL_TABLE_NAME}, c.{COL_CONSTRAINT_NAME},
-                   c.r_owner, rc.{COL_TABLE_NAME} AS referenced_table,
+            SELECT c.{OWNER_COL}, c.{TABLE_NAME_COL}, c.{CONSTRAINT_NAME_COL}, 
+                   c.r_owner, rc.{TABLE_NAME_COL} AS referenced_table,
                    c.delete_rule, c.deferrable, c.deferred, c.status,
-                   cc.{COL_COLUMN_NAME}, cc.position,
-                   rcc.{COL_COLUMN_NAME} AS referenced_column
+                   cc.{COLUMN_NAME_COL}, cc.position,
+                   rcc.{COLUMN_NAME_COL} AS referenced_column
             FROM {ALL_CONSTRAINTS_VIEW} c
             JOIN {ALL_CONS_COLUMNS_VIEW} cc
-              ON c.{COL_OWNER} = cc.{COL_OWNER}
-             AND c.{COL_CONSTRAINT_NAME} = cc.{COL_CONSTRAINT_NAME}
-             AND c.{COL_TABLE_NAME} = cc.{COL_TABLE_NAME}
+              ON c.{OWNER_COL} = cc.{OWNER_COL}
+             AND c.{CONSTRAINT_NAME_COL} = cc.{CONSTRAINT_NAME_COL}
+             AND c.{TABLE_NAME_COL} = cc.{TABLE_NAME_COL}
             JOIN {ALL_CONSTRAINTS_VIEW} rc
-              ON c.r_owner = rc.{COL_OWNER}
-             AND c.r_constraint_name = rc.{COL_CONSTRAINT_NAME}
+              ON c.r_owner = rc.{OWNER_COL}
+             AND c.r_constraint_name = rc.{CONSTRAINT_NAME_COL}
             JOIN {ALL_CONS_COLUMNS_VIEW} rcc
-              ON rc.{COL_OWNER} = rcc.{COL_OWNER}
-             AND rc.{COL_CONSTRAINT_NAME} = rcc.{COL_CONSTRAINT_NAME}
-             AND rc.{COL_TABLE_NAME} = rcc.{COL_TABLE_NAME}
+              ON rc.{OWNER_COL} = rcc.{OWNER_COL}
+             AND rc.{CONSTRAINT_NAME_COL} = rcc.{CONSTRAINT_NAME_COL}
+             AND rc.{TABLE_NAME_COL} = rcc.{TABLE_NAME_COL}
              AND cc.position = rcc.position
             WHERE c.constraint_type = '{FOREIGN_KEY_CONSTRAINT_TYPE}'
-              AND c.{COL_OWNER} = :{PARAM_SCHEMA_NAME}
-              {SYSTEM_TABLE_FILTERS.format(table_col=f'c.{COL_TABLE_NAME}')}
-            ORDER BY c.{COL_TABLE_NAME}, c.{COL_CONSTRAINT_NAME}, cc.position
+              AND c.{OWNER_COL} = :{PARAM_SCHEMA_NAME}
+              {SYSTEM_TABLE_FILTERS.format(table_col=f'c.{TABLE_NAME_COL}')}
+            ORDER BY c.{TABLE_NAME_COL}, c.{CONSTRAINT_NAME_COL}, cc.position
             """,
             schema_params,
         ),
         "indexes": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, index_name, {COL_TABLE_NAME}, uniqueness, index_type,
+            SELECT {OWNER_COL}, index_name, {TABLE_NAME_COL}, uniqueness, index_type,
                    tablespace_name, compression, status
             FROM {ALL_INDEXES_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
@@ -414,7 +395,7 @@ def export_schema_metadata(
         "index_columns": fetch_rows(
             connection,
             f"""
-            SELECT index_owner, index_name, {COL_TABLE_NAME}, {COL_COLUMN_NAME},
+            SELECT index_owner, index_name, {TABLE_NAME_COL}, {COLUMN_NAME_COL},
                    column_position, descend
             FROM {ALL_IND_COLUMNS_VIEW}
             WHERE index_owner = :{PARAM_SCHEMA_NAME}
@@ -425,19 +406,18 @@ def export_schema_metadata(
         "triggers": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, trigger_name, {COL_TABLE_NAME}, triggering_event,
+            SELECT {OWNER_COL}, trigger_name, {TABLE_NAME_COL}, triggering_event,
                    trigger_type, status, when_clause, description
             FROM {ALL_TRIGGERS_VIEW}
-            WHERE {COL_OWNER} = :{PARAM_SCHEMA_NAME}
+            WHERE {OWNER_COL} = :{PARAM_SCHEMA_NAME}
             {table_filters}
             """,
             schema_params,
         ),
-        "grants": None,
         "synonyms": fetch_rows(
             connection,
             f"""
-            SELECT {COL_OWNER}, synonym_name, table_owner, {COL_TABLE_NAME}, db_link
+            SELECT {OWNER_COL}, synonym_name, table_owner, {TABLE_NAME_COL}, db_link
             FROM {ALL_SYNONYMS_VIEW}
             WHERE table_owner = :{PARAM_SCHEMA_NAME}
             {table_filters}
@@ -446,35 +426,8 @@ def export_schema_metadata(
         ),
     }
 
-    grants_columns = get_view_columns(connection, ALL_TAB_PRIVS_VIEW)
-    owner_col = OWNER_COLUMN if OWNER_COLUMN in grants_columns else TABLE_SCHEMA_COLUMN
-    if owner_col in grants_columns:
-        grants_select_cols = [
-            owner_col,
-            COL_TABLE_NAME,
-            COL_GRANTEE,
-            COL_PRIVILEGE,
-            COL_GRANTABLE,
-        ]
-        if COL_TYPE in grants_columns:
-            grants_select_cols.append(COL_TYPE)
-        elif COL_HIERARCHY in grants_columns:
-            grants_select_cols.append(COL_HIERARCHY)
-        grants_query = (
-            f"SELECT {', '.join(grants_select_cols)} "
-            f"FROM {ALL_TAB_PRIVS_VIEW} WHERE {owner_col} = :{PARAM_SCHEMA_NAME} "
-            f"{table_filters}"
-        )
-        metadata["grants"] = fetch_rows(
-            connection,
-            grants_query,
-            schema_params,
-        )
-    else:
-        metadata["grants"] = []
-
-    metadata_path = os.path.join(output_dir, METADATA_FILENAME)
-    with open(metadata_path, "w", encoding="utf-8") as f:
+    metadata_path = output_dir / METADATA_FILENAME
+    with metadata_path.open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, default=json_default)
     print(f"Wrote metadata to {metadata_path}")
 
@@ -484,42 +437,47 @@ def parse_args() -> argparse.Namespace:
         description="Export Oracle schema data and metadata."
     )
     parser.add_argument(
-        "--export-data",
+        "--export-csv",
         action="store_true",
-        help="Export table data to CSV (first 1000 rows).",
+        help="Export sample table data to CSV (first 1000 rows).",
     )
     parser.add_argument(
-        "--export-metadata",
+        "--export-schema-metadata",
         action="store_true",
-        help="Export schema metadata to JSON.",
+        help="Export schema metadata (columns, constraints, FKs, indexes) to JSON.",
+    )
+    parser.add_argument(
+        "--target-schema",
+        default=DEFAULT_SCHEMA,
+        help=f"Target schema to export (default: {DEFAULT_SCHEMA}).",
     )
     return parser.parse_args()
 
 
 def run_exports() -> None:
     args = parse_args()
-    export_data = args.export_data or args.export_metadata
-    export_metadata = args.export_metadata or args.export_data
-    if not export_data and not export_metadata:
-        export_data = export_metadata = True
+    # If neither flag is given, export both
+    run_both = not args.export_csv and not args.export_schema_metadata
 
-    output_directory = get_output_directory(TARGET_SCHEMA, BASE_OUTPUT_DIRECTORY)
-    os.makedirs(output_directory, exist_ok=True)
+    schema = args.target_schema
+    output_directory = BASE_OUTPUT_DIRECTORY / schema.upper()
+    output_directory.mkdir(parents=True, exist_ok=True)
 
     conn = get_connection()
-    tables = get_tables_in_schema(conn, TARGET_SCHEMA)
+    try:
+        tables = get_table_names_in_schema(conn, schema)
+        print(f"Starting export for schema: {schema}...")
+        print(SEPARATOR)
 
-    print(f"Starting export for schema: {TARGET_SCHEMA}...")
-    print(SEPARATOR)
+        if args.export_csv or run_both:
+            for table in tables:
+                export_table_to_csv(conn, schema, table, output_directory)
 
-    if export_data:
-        for table in tables:
-            export_table_to_csv(conn, TARGET_SCHEMA, table, output_directory)
+        if args.export_schema_metadata or run_both:
+            export_schema_metadata_to_json(conn, schema, output_directory)
+    finally:
+        conn.close()
 
-    if export_metadata:
-        export_schema_metadata(conn, TARGET_SCHEMA, output_directory)
-
-    conn.close()
     print(SEPARATOR)
     print("Export process completed.")
 
