@@ -2,18 +2,13 @@ import csv
 import json
 import argparse
 
+from typing import Any
 from pathlib import Path
-from typing import Any, Optional, Tuple
 
-from sql_query_assistant.config import Settings
+from sql_query_assistant.config import PathSettings
 
-# Lookup column candidates for identifying key-value pairs in lookup tables
-KEY_COLUMN_CANDIDATES = ["ID", "CODE"]
+# Label-column heuristics for identifying human-readable values in lookup tables
 VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
-KEY_COLUMN_SUFFIXES = [
-    "_CODE",
-    "_ID",
-]  # prefer _CODE before _ID (e.g., SOC_CODE over RMS_ID)
 VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
 
 # Metadata field names
@@ -62,16 +57,16 @@ LOOKUP_SCHEMA_NAME = "ICSR_LOOKUP"
 # Table filtering patterns for text-to-SQL relevance
 # These patterns identify operational/technical tables that are not useful for end-user queries
 SKIP_TABLE_PREFIXES = (
-    "TMP_",  # Temporary/staging tables
-    "DD_",  # Deduplication tables (except DD_SAFETYREPORT_DUPLICATES - see KEEP list)
-    "DDC_",  # Deduplication cluster tables
-    "QRTZ_",  # Quartz scheduler tables
-    "CT_",  # Empty clinical trial tables (ICSR_EMA)
-    "MODEL_",  # ML model intermediates
-    "INTERPRETATION_",  # Interpretation intermediates
-    "REROUTED_MESSAGE",  # Message rerouting tables (ICSR_EMA)
-    "EXPORT_REQUEST",  # Export plumbing tables (ICSR_EMA)
-    "VW_R_AUTO_LOG",  # Log aggregation views (ICSR_EMA)
+    "TMP_",
+    "DD_",
+    "DDC_",
+    "QRTZ_",
+    "CT_",
+    "MODEL_",
+    "INTERPRETATION_",
+    "REROUTED_MESSAGE",
+    "EXPORT_REQUEST",
+    "VW_R_AUTO_LOG",
 )
 
 # Tables to explicitly KEEP even if they match skip patterns
@@ -80,36 +75,33 @@ KEEP_TABLES = {
 }
 
 SKIP_TABLE_SUFFIXES = (
-    "_TMP",  # Temporary tables
-    "_HIST",  # Historical audit tables (ICSR_EMA only)
-    "_LOG",  # Logging tables
+    "_TMP",
+    "_HIST",
+    "_LOG",
+    "_BAK",
 )
 
 SKIP_TABLE_PATTERNS = (
-    "_BK_",  # Backup tables (e.g., CASE_REPORT_BK_SCTASK0223177)
-    "_BAK",  # Backup tables
+    "_BK_",
 )
 
 # Exact table names to skip (across all schemas)
 SKIP_TABLES_GLOBAL = {
-    "MAP_TBL_COL",  # Technical metadata
-    "MAP_TBL_SEQ",  # Technical metadata
-    "TBL_STATS_EXPORT",  # Export statistics
-    "UNIT_MISSPELLING",  # Spelling correction
-    "CONFIG_PARAMETER",  # Operational config
-    "QUALITY_ISSUE",  # Operational
-    "CRITERIA",  # Operational config
-    "SCHEMA_VERSION",  # Schema version metadata
+    "MAP_TBL_COL",
+    "MAP_TBL_SEQ",
+    "TBL_STATS_EXPORT",
+    "UNIT_MISSPELLING",
+    "CONFIG_PARAMETER",
+    "QUALITY_ISSUE",
+    "CRITERIA",
+    "SCHEMA_VERSION",
 }
 
 # Tables to skip only in specific schemas
 SKIP_TABLES_BY_SCHEMA = {
-    "ICSR": {
-        "TMP_REPORTER",  # Staging data
-    },
     "ICSR_LOOKUP": {
-        "ACCESS_LEVEL",  # Not referenced by core tables
-        "ACCESS_RIGHT",  # System permissions, not clinical
+        "ACCESS_LEVEL",
+        "ACCESS_RIGHT",
     },
     "ICSR_EMA": {
         "ACCESS_POLICY",
@@ -126,19 +118,19 @@ SKIP_TABLES_BY_SCHEMA = {
         "REPORT_CATEGORY_ORG",
         "APP_COMPONENT_DOWNTIME",
         "DOCUMENT_DMS_MAPPING",
-        "DM_CONFIGURATION",  # Data management config
-        "DM_MAPPING",  # Data management mapping
-        "DM_EXTERNAL_DATA",  # Data management external
-        "D_PROCEDURERESULTS",  # Procedure results (internal)
-        "R_STATUS_PRODS",  # Status products (internal)
-        "R_STATUS_SUBS",  # Status substances (internal)
-        "ICSR_FIELD_NULL_FLAVOUR",  # Field metadata
-        "ICSR_FIELD_OID",  # Field OIDs
-        "VW_ORGANISATION_HQ",  # Org hierarchy view
-        "VW_REPORTS_MLM",  # MLM reporting view
-        "VW_SUBSTANCES_MLM",  # MLM substances view
-        "ACTIVE_SUBSTANCE_MLM",  # MLM substance data
-        "SAFETY_REPORT_COMMIT_ROLLBACK",  # Transactional tracking (empty)
+        "DM_CONFIGURATION",
+        "DM_MAPPING",
+        "DM_EXTERNAL_DATA",
+        "D_PROCEDURERESULTS",
+        "R_STATUS_PRODS",
+        "R_STATUS_SUBS",
+        "ICSR_FIELD_NULL_FLAVOUR",
+        "ICSR_FIELD_OID",
+        "VW_ORGANISATION_HQ",
+        "VW_REPORTS_MLM",
+        "VW_SUBSTANCES_MLM",
+        "ACTIVE_SUBSTANCE_MLM",
+        "SAFETY_REPORT_COMMIT_ROLLBACK",
     },
 }
 
@@ -163,15 +155,19 @@ def should_skip_table(table_name: str, schema_name: str) -> bool:
     if upper_name in KEEP_TABLES:
         return False
 
+    # Cheap exact-match checks before loop-based pattern checks
+    if upper_name in SKIP_TABLES_GLOBAL:
+        return True
+    if upper_name in SKIP_TABLES_BY_SCHEMA.get(schema_name, set()):
+        return True
+
     # Check prefix patterns
     for prefix in SKIP_TABLE_PREFIXES:
         if upper_name.startswith(prefix):
             return True
 
-    # Check suffix patterns (HIST only for ICSR_EMA)
+    # Check suffix patterns
     for suffix in SKIP_TABLE_SUFFIXES:
-        if suffix == "_HIST" and schema_name != "ICSR_EMA":
-            continue
         if upper_name.endswith(suffix):
             return True
 
@@ -179,15 +175,6 @@ def should_skip_table(table_name: str, schema_name: str) -> bool:
     for pattern in SKIP_TABLE_PATTERNS:
         if pattern in upper_name:
             return True
-
-    # Check global skip list
-    if upper_name in SKIP_TABLES_GLOBAL:
-        return True
-
-    # Check schema-specific skip list
-    schema_skip_set = SKIP_TABLES_BY_SCHEMA.get(schema_name, set())
-    if upper_name in schema_skip_set:
-        return True
 
     return False
 
@@ -236,195 +223,252 @@ def load_metadata(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def group_by_key(
-    items: list[dict[str, Any]], key: str, sort_key: Optional[str] = None
+def group_rows_by_field(
+    items: list[dict[str, Any]], key: str, sort_key: str | None = None
 ) -> dict[str, list[dict[str, Any]]]:
-    """Group items by a specified key with optional sorting."""
-    grouped = {}
-    for item in items:
-        grouped.setdefault(item[key], []).append(item)
+    """
+    Group a flat list of dicts into buckets that share the same *key* value.
 
+    Args:
+        items: Flat list of dicts (e.g. column metadata rows).
+        key: Dict key whose value becomes the grouping key (e.g. "table_name").
+        sort_key: If given, each group is sorted ascending by this numeric field
+            (missing values default to 0).
+
+    Returns:
+        Mapping of group value to the list of dicts that share it,
+        e.g. ``{"MY_TABLE": [row1, row2, ...]}``.
+    """
+    # Build buckets: each unique value of row[key] gets its own list.
+    # E.g. key="table_name" turns [{"table_name": "DRUG", ...}, {"table_name": "DRUG", ...}]
+    #   into {"DRUG": [{...}, {...}]}
+    grouped = {}
+    for row in items:
+        grouped.setdefault(row[key], []).append(row)
+
+    # Optionally sort each bucket by a numeric field (e.g. "position")
     if sort_key:
-        for group_items in grouped.values():
-            group_items.sort(key=lambda item: item.get(sort_key) or 0)
+        for rows in grouped.values(): # sort in-place each bucket by the given sort_key
+            rows.sort(key=lambda row: row.get(sort_key, 0)) # missing value gloat to the front of the list
 
     return grouped
 
 
-def build_type_string(column: dict[str, Any]) -> str:
-    """Build a formatted type string from column metadata."""
+def format_column_type(column: dict[str, Any]) -> str:
+    """
+    Format an Oracle column's data type into a human-readable string.
+
+    Appends length or precision/scale qualifiers where applicable:
+      - VARCHAR2(200), NCHAR(10)   character types get a length qualifier
+      - NUMBER(10,2), NUMBER(5)    NUMBER gets precision and optional scale
+      - DATE, CLOB, ...            all other types are returned as-is
+
+    Args:
+        column: A single column metadata dict from the Oracle export.
+
+    Returns:
+        Formatted type string, e.g. "VARCHAR2(200)" or "NUMBER(10,2)".
+    """
     data_type = column.get(FIELD_DATA_TYPE) or ""
     precision = column.get("data_precision")
     scale = column.get("data_scale")
     char_length = column.get("char_length")
     data_length = column.get("data_length")
 
+    # Character types: prefer char_length (semantic), fall back to data_length (byte-based)
     if data_type in ORACLE_CHAR_TYPES:
         length = char_length or data_length
         return f"{data_type}({length})" if length else data_type
+
+    # NUMBER with explicit precision: include scale only when defined
     if data_type == ORACLE_NUMBER_TYPE and precision is not None:
         if scale is not None:
             return f"{ORACLE_NUMBER_TYPE}({precision},{scale})"
         return f"{ORACLE_NUMBER_TYPE}({precision})"
+
+    # Everything else (DATE, CLOB, BLOB, TIMESTAMP, etc.)
     return data_type
 
 
-def pick_lookup_columns(
-    columns: list[dict[str, Any]], table_name: Optional[str] = None
-) -> Tuple[Optional[str], Optional[str]]:
+def pick_label_column(
+    columns: list[dict[str, Any]],
+    table_name: str | None = None,
+    key_column: str | None = None,
+) -> str | None:
     """
-    Identify key and value columns in a lookup table.
+    Identify which column in a lookup table holds the human-readable label.
+
+    Lookup tables translate numeric codes into text (e.g. 78 → "France").
+    The code/key column is typically already known from FK metadata; this
+    function figures out which of the remaining columns is the readable name.
+
+    Tries, in order:
+      1. Table-name match    e.g. COUNTRY → COUNTRY_NAME
+      2. Suffix match        any column ending in _NAME or _DESC
+      3. Generic exact       NAME, LABEL, DESCRIPTION
+      4. Two-column tables   if only two columns, the label is "the other one"
+
+    Args:
+        columns:     Column metadata dicts (must contain "column_name").
+        table_name:  Lookup table name; enables tier 1.
+        key_column:  Known key column to exclude from candidates.
 
     Returns:
-        Tuple of (key_column_name, value_column_name) or (None, None) if not found.
+        Column name (original casing), or None if no label column found.
     """
     column_names = [col[FIELD_COLUMN_NAME] for col in columns]
-    upper_names = [name.upper() for name in column_names]
 
-    def find_candidate(
-        base_candidates: list[str], suffixes: list[str]
-    ) -> Optional[str]:
-        # First priority: column that matches table_name + suffix
-        if table_name:
-            upper_table = table_name.upper()
-            for suffix in suffixes:
-                table_specific_col = f"{upper_table}{suffix}"
-                if table_specific_col in upper_names:
-                    return column_names[upper_names.index(table_specific_col)]
+    # Build a case-insensitive index: "COUNTRY_NAME" → "Country_Name" (original)
+    name_lookup = {name.upper(): name for name in column_names}
+    upper_key = key_column.upper() if key_column else None
 
-        # Second priority: exact matches like "ID", "CODE"
-        for candidate in base_candidates:
-            if candidate in upper_names:
-                return column_names[upper_names.index(candidate)]
+    def _is_valid(col_upper: str) -> bool:
+        """A candidate is valid if it isn't the key column we already know."""
+        return upper_key is None or col_upper != upper_key
 
-        # Third priority: suffix patterns in order
-        for suffix in suffixes:
-            for upper_name, original_name in zip(upper_names, column_names):
-                if upper_name.endswith(suffix):
-                    return original_name
+    # 1) Table-name match: e.g. COUNTRY table → look for COUNTRY_NAME
+    if table_name:
+        upper_table = table_name.upper()
+        for suffix in VALUE_COLUMN_SUFFIXES:
+            candidate = f"{upper_table}{suffix}" # We match in UPPER,
+            original = name_lookup.get(candidate)
+            if original is not None and _is_valid(original.upper()):
+                return original # but return the original form for downstream code
 
-        return None
+    # 2) suffix match: first column ending in _NAME or _DESC wins
+    for suffix in VALUE_COLUMN_SUFFIXES:
+        for upper_name, original in name_lookup.items():
+            if upper_name.endswith(suffix) and _is_valid(upper_name):
+                return original
 
-    key_column = find_candidate(KEY_COLUMN_CANDIDATES, KEY_COLUMN_SUFFIXES)
-    value_column = find_candidate(VALUE_COLUMN_CANDIDATES, VALUE_COLUMN_SUFFIXES)
+    # 3) generic exact: bare column names like NAME, LABEL, DESCRIPTION
+    for candidate in VALUE_COLUMN_CANDIDATES:
+        original = name_lookup.get(candidate)
+        if original is not None and _is_valid(original.upper()):
+            return original
 
-    # For two-column tables, use smart fallback
-    if len(column_names) == 2:
-        if not key_column and not value_column:
-            key_column = column_names[0]
-            value_column = column_names[1]
-        elif key_column and not value_column:
-            value_column = (
-                column_names[1] if column_names[0] == key_column else column_names[0]
-            )
-        elif value_column and not key_column:
-            key_column = (
-                column_names[0] if column_names[1] == value_column else column_names[1]
-            )
+    # 4) two-column fallback: if we know the key, the label must be
+    # the other column. Works because callers sort by COLUMN_ID first.
+    if len(column_names) == 2 and key_column:
+        other = column_names[1] if column_names[0] == key_column else column_names[0]
+        if other != key_column:
+            return other
 
-    if key_column and value_column and key_column != value_column:
-        return key_column, value_column
-    return None, None
+    return None
 
 
-def load_value_map_with_metadata(
+def build_value_map_from_csv(
     csv_path: Path,
     key_column: str,
     value_column: str,
     row_count: int,
 ) -> dict[str, Any]:
     """
-    Load a value map from a CSV file with metadata.
+    Build a value map from a CSV export of a lookup table.
 
-    The presence/absence of _value_column serves as a semantic signal to the LLM:
-    - ≤FULL_EMBED_THRESHOLD: all values embedded, _count only (no _value_column)
-    - >FULL_EMBED_THRESHOLD: SAMPLE_SIZE samples + _count + _value_column
+    The returned dict mixes `_`-prefixed metadata keys with data entries:
 
-    When _value_column is absent, the LLM knows all values are present and can
-    use IDs directly. When present, it signals that a JOIN may be needed.
+        {"_count": 500, "_value_column": "NAME", "1": "Headache", "2": "Nausea", ...}
+
+    Small tables (≤ FULL_EMBED_THRESHOLD rows): all entries embedded, no
+    `_value_column` → LLM can use IDs directly.
+    Large tables (> FULL_EMBED_THRESHOLD rows): SAMPLE_SIZE entries, plus
+    `_value_column` → LLM knows a JOIN may be needed.
 
     Args:
         csv_path: Path to the CSV file
-        key_column: Column name for keys
-        value_column: Column name for values
-        row_count: Total row count from metadata (required)
+        key_column: Column name for keys (e.g. "COUNTRY_ID")
+        value_column: Column name for values (e.g. "COUNTRY_NAME")
+        row_count: Total row count from Oracle metadata
 
     Returns:
-        Dictionary with value mappings and metadata.
+        Dict with value mappings and metadata, or `{}` if no valid
+        entries were found.
     """
-    if row_count <= FULL_EMBED_THRESHOLD:
-        # Full embed - all values, _count only (no _value_column signals completeness)
-        value_map: dict[str, Any] = {"_count": row_count}
-        with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                key_value = row.get(key_column)
-                value = row.get(value_column)
-                if key_value is None or not str(key_value).strip():
-                    continue
-                if value is None or not str(value).strip():
-                    continue
-                value_map[str(key_value)] = str(value)
-        return value_map
-    else:
-        # Sampled - _value_column present signals incompleteness
-        value_map = {
-            "_count": row_count,
-            "_value_column": value_column,
-        }
-        samples_collected = 0
-        with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                key_value = row.get(key_column)
-                value = row.get(value_column)
-                if key_value is None or not str(key_value).strip():
-                    continue
-                if value is None or not str(value).strip():
-                    continue
-                value_map[str(key_value)] = str(value)
-                samples_collected += 1
-                if samples_collected >= SAMPLE_SIZE:
-                    break
-        return value_map
+    is_sampled = row_count > FULL_EMBED_THRESHOLD
+    max_entries = SAMPLE_SIZE if is_sampled else None
+
+    value_map: dict[str, Any] = {"_count": row_count} # e.g., value_map looks like {"_count": 102}
+    if is_sampled:
+        value_map["_value_column"] = value_column
+        # now value_map = {"_count": 102, "_value_column": "NAME"}
+        # {"_count": 102, "_value_column": "NAME", "1": "Headache", ...}
+
+    # Read key->value pairs from the CSV, skipping rows with blank keys or values
+    entries_added = 0
+    with csv_path.open("r", encoding=UTF8_ENCODING, newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            row_key = row.get(key_column) # key_column='UNIT_ID -> row_key='1'
+            row_value = row.get(value_column) # value_column='UNIT_NAME' -> row_value='Milligram'
+            # Skip rows with blank keys or values
+            if not row_key or not row_key.strip():
+                continue
+            if not row_value or not row_value.strip():
+                continue
+            # store the cleaned version
+            value_map[row_key.strip()] = row_value.strip()
+            entries_added += 1
+            if max_entries is not None and entries_added >= max_entries:
+                break
+
+    if entries_added == 0:
+        return {} # no entries, get discarded down the line
+
+    return value_map
 
 
 def build_column_fk_map(
     foreign_keys_rows: list[dict[str, Any]],
-) -> dict[Tuple[str, str], str]:
+) -> dict[tuple[str, str], str]:
     """
-    Build a mapping from (table_name, column_name) to compact FK string.
+    Build a lookup from (table, column) to the foreign table it points at.
+
+    Each FK row from Oracle maps one source column to one referenced column.
+    Composite FKs (e.g. COUNTRY_ID + REGION_ID) appear as separate rows
+    sharing a constraint name — but since we map per-column, each row is
+    processed independently and composites are handled naturally.
+
+        Where the FK lives               Where it points to
+        (source_table, source_column)  → "ref_schema.ref_table.ref_column"
+        ("CASE",       "COUNTRY_ID")   → "ICSR_LOOKUP.COUNTRY.ID"
+        ("CASE",       "STATUS_CODE")  → "ICSR_LOOKUP.STATUS.CODE"
+
+    Args:
+        foreign_keys_rows: Raw FK rows from Oracle metadata export.
 
     Returns:
-        Dict mapping (table, column) to "REF_SCHEMA.REF_TABLE.REF_COLUMN" strings.
+        Dict mapping (table_name, column_name) to
+        "REF_SCHEMA.REF_TABLE.REF_COLUMN" strings.
     """
-    # Group by (table_name, constraint_name) to handle composite FKs
-    grouped = {}
-    for row in foreign_keys_rows:
-        composite_key = (row[FIELD_TABLE_NAME], row[FIELD_CONSTRAINT_NAME])
-        grouped.setdefault(composite_key, []).append(row)
-
-    # Build column-level FK mapping
     column_fk_map = {}
-    for (table_name, _), rows in grouped.items():
-        rows.sort(key=lambda r: r.get(FIELD_POSITION) or 0)
-        for row in rows:
-            column_name = row[FIELD_COLUMN_NAME]
-            ref_schema = row[FIELD_R_OWNER]
-            ref_table = row[FIELD_REFERENCED_TABLE]
-            ref_column = row[FIELD_REFERENCED_COLUMN]
-            # Compact FK format: "SCHEMA.TABLE.COLUMN"
-            column_fk_map[(table_name, column_name)] = (
-                f"{ref_schema}.{ref_table}.{ref_column}"
-            )
-
+    for row in foreign_keys_rows:
+        # Key: which column has the FK  (e.g. ("CASE", "COUNTRY_ID"))
+        source = (row[FIELD_TABLE_NAME], row[FIELD_COLUMN_NAME])
+        # Value: where it points to      (e.g. "ICSR_LOOKUP.COUNTRY.ID")
+        target = f"{row[FIELD_R_OWNER]}.{row[FIELD_REFERENCED_TABLE]}.{row[FIELD_REFERENCED_COLUMN]}"
+        column_fk_map[source] = target
+    # Example: {('ACTIVE_SUBSTANCE', 'STRENGTH_UNIT_ID'): 'ICSR_LOOKUP.UNIT.UNIT_ID'}
     return column_fk_map
 
 
 def get_table_row_count(
     tables: dict[str, list[dict[str, Any]]], table_name: str
-) -> Optional[int]:
-    """Get row count for a table from tables metadata."""
+) -> int | None:
+    """
+    Look up how many rows a table has, according to Oracle metadata.
+    The `tables` dict maps table names to their metadata rows.
+    We grab the first row's `num_rows` field
+
+    Args:
+        tables: Grouped tables metadata (from group_rows_by_field on FIELD_TABLE_NAME)
+                Table name maps to list of metadata rows, e.g:
+                {"COUNTRY": [{"table_name": "COUNTRY", "num_rows": 250, ...}]}
+        table_name: Name of the table to get row count for (e.g. "ACTIVE_SUBSTANCE")
+
+    Returns:
+        Number of rows in the table, or None if not found.
+    """
     table_data = tables.get(table_name, [])
     return table_data[0].get(FIELD_NUM_ROWS) if table_data else None
 
@@ -433,7 +477,18 @@ def extract_primary_key_columns(
     constraints: list[dict[str, Any]],
     constraint_columns: dict[str, list[dict[str, Any]]],
 ) -> list[str]:
-    """Extract primary key column names for a table."""
+    """
+    Extract primary key column names for a table.
+
+    Finds the first constraint with type "P" (Oracle's primary key marker)
+    and returns its column names. Returns [] if no PK exists.
+
+    Args:
+        constraints: Constraint rows for this table, e.g.
+            [{"constraint_name": "PK_CASE", "constraint_type": "P"}, ...]
+        constraint_columns: Constraint name → its column rows, e.g.
+            {"PK_CASE": [{"column_name": "CASE_ID"}, ...]}
+    """
     for constraint in constraints:
         if constraint.get(FIELD_CONSTRAINT_TYPE) == CONSTRAINT_TYPE_PRIMARY:
             constraint_name = constraint.get(FIELD_CONSTRAINT_NAME)
@@ -450,7 +505,7 @@ def generate_table_cards(
     cards_dir: Path,
     overwrite: bool,
     filter_tables: bool = True,
-    lookup_metadata: Optional[dict[str, Any]] = None,
+    lookup_metadata: dict[str, Any] | None = None,
 ):
     """
     Generate optimized table card JSON files from metadata.
@@ -465,9 +520,9 @@ def generate_table_cards(
     print(f"\nProcessing schema: {schema_name}")
 
     # Index metadata by table name - ONLY for current schema
-    schema_tables = group_by_key(metadata.get("tables", []), FIELD_TABLE_NAME)
-    schema_columns = group_by_key(metadata.get("columns", []), FIELD_TABLE_NAME)
-    constraints_by_table = group_by_key(
+    schema_tables = group_rows_by_field(metadata.get("tables", []), FIELD_TABLE_NAME)
+    schema_columns = group_rows_by_field(metadata.get("columns", []), FIELD_TABLE_NAME)
+    constraints_by_table = group_rows_by_field(
         metadata.get("constraints", []), FIELD_TABLE_NAME
     )
 
@@ -482,7 +537,7 @@ def generate_table_cards(
     }
 
     # Build constraint columns and FK mappings
-    constraint_columns = group_by_key(
+    constraint_columns = group_rows_by_field(
         metadata.get("constraint_columns", []),
         FIELD_CONSTRAINT_NAME,
         sort_key=FIELD_POSITION,
@@ -493,10 +548,10 @@ def generate_table_cards(
     lookup_tables = {}
     lookup_columns = {}
     if lookup_metadata:
-        lookup_tables = group_by_key(
+        lookup_tables = group_rows_by_field(
             lookup_metadata.get("tables", []), FIELD_TABLE_NAME
         )
-        lookup_columns = group_by_key(
+        lookup_columns = group_rows_by_field(
             lookup_metadata.get("columns", []), FIELD_TABLE_NAME
         )
 
@@ -533,7 +588,7 @@ def generate_table_cards(
 
             col_meta: dict[str, Any] = {
                 "name": column_name,
-                "type": build_type_string(column),
+                "type": format_column_type(column),
                 "nullable": column.get(FIELD_NULLABLE) == NULLABLE_YES,
             }
 
@@ -557,16 +612,16 @@ def generate_table_cards(
                         if ref_table not in table_value_maps:
                             # Try to load value_map from CSV
                             ref_columns = lookup_columns.get(ref_table, [])
-                            key_col, value_col = pick_lookup_columns(
-                                ref_columns, table_name=ref_table
-                            )
-
-                            # Override key_col with the actual referenced column
-                            if any(
+                            ref_col_exists = any(
                                 c.get(FIELD_COLUMN_NAME) == ref_column
                                 for c in ref_columns
-                            ):
-                                key_col = ref_column
+                            )
+                            key_col = ref_column if ref_col_exists else None
+                            value_col = pick_label_column(
+                                ref_columns,
+                                table_name=ref_table,
+                                key_column=key_col,
+                            )
 
                             if key_col and value_col:
                                 csv_path = (
@@ -578,7 +633,7 @@ def generate_table_cards(
                                     lookup_tables, ref_table
                                 )
                                 if csv_path.exists() and row_count is not None:
-                                    value_map = load_value_map_with_metadata(
+                                    value_map = build_value_map_from_csv(
                                         csv_path, key_col, value_col, row_count
                                     )
                                     if value_map:
@@ -635,11 +690,11 @@ def generate_table_cards(
 def main():
     """Main entry point for table card generation."""
     args = parse_args()
-    settings = Settings()
+    paths = PathSettings()
 
     # Resolve directory paths with defaults
-    exports_dir = Path(args.exports_dir or settings.paths.input_dir / DB_EXPORTS_DIR)
-    cards_dir = Path(args.cards_dir or settings.paths.table_cards_dir)
+    exports_dir = Path(args.exports_dir or paths.input_dir / DB_EXPORTS_DIR)
+    cards_dir = Path(args.cards_dir or paths.table_cards_dir)
 
     # Determine which metadata files to process
     if args.metadata_file:
