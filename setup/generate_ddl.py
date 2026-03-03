@@ -287,7 +287,32 @@ def _find_required_function_warnings(columns: list[dict]) -> list[str]:
     return sorted(required_functions)
 
 
-def _generate_column_line(column_metadata: dict[str, Any]) -> str:
+def _quote_if_needed(identifier: str) -> str:
+    """
+    Wrap an identifier in double quotes if it contains spaces.
+
+    Some constraint names in the source database contain spaces (e.g.
+    "FK_PRMH ENDDATENF").  Oracle treats unquoted spaces as token
+    separators, which breaks the SQL syntax.  Double-quoting tells
+    Oracle to treat the whole string as a single identifier.
+    """
+    if " " in identifier:
+        return f'"{identifier}"'
+    return identifier
+
+
+def _uses_case_expression(expression: str) -> bool:
+    """
+    Check whether a virtual column expression uses the CASE keyword.
+
+    Some Oracle instances reject CASE in virtual column definitions
+    (ORA-00922), even though the expressions are valid SQL.  This is a
+    known incompatibility between Oracle environments.
+    """
+    return bool(re.search(r'\bCASE\b', expression, re.IGNORECASE))
+
+
+def _generate_column_line(column_metadata: dict[str, Any]) -> str | None:
     """
     Generate one line of a CREATE TABLE body for a single column.
 
@@ -299,7 +324,8 @@ def _generate_column_line(column_metadata: dict[str, Any]) -> str:
 
     Returns:
         A string like `'    REPORT_ID                        NUMBER(20) NOT NULL'`
-        (indented, no trailing comma; the caller joins lines with commas).
+        (indented, no trailing comma; the caller joins lines with commas),
+        or None if the column must be skipped (e.g. CASE-based virtual column).
     """
     name_pad = 35  # spaces to pad column names for visual alignment
     column_name = column_metadata["column_name"]
@@ -316,6 +342,11 @@ def _generate_column_line(column_metadata: dict[str, Any]) -> str:
     # Virtual column (value computed from an expression)
     if _is_virtual_column(column_metadata):
         expression = default_expression.strip()
+        # CASE expressions in virtual columns cause ORA-00922 on some
+        # Oracle instances.  Skip these columns; they will be emitted
+        # as comments after the CREATE TABLE statement.
+        if _uses_case_expression(expression):
+            return None
         parts.append(f" GENERATED ALWAYS AS ({expression}) VIRTUAL")
         return "".join(parts)
 
@@ -368,11 +399,18 @@ def _generate_create_table(
     prefix = "CREATE GLOBAL TEMPORARY TABLE" if is_temporary else "CREATE TABLE"
     lines.append(f"{prefix} {schema_prefix}{table_name} (")
 
-    body_lines = [_generate_column_line(column) for column in sorted_columns]
+    # Generate column lines; _generate_column_line returns None for columns
+    # that must be skipped (CASE-based virtual columns).
+    column_results = [_generate_column_line(column) for column in sorted_columns]
+    body_lines = [line for line in column_results if line is not None]
+
+    skipped_columns = [
+        col for col, line in zip(sorted_columns, column_results) if line is None
+    ]
 
     # Primary key constraint (inline)
     if pk_columns:
-        constraint_name = pk_name or f"PK_{table_name}"
+        constraint_name = _quote_if_needed(pk_name or f"PK_{table_name}")
         columns_csv = ", ".join(pk_columns)
         disable_clause = " DISABLE" if pk_status == "DISABLED" else ""
         body_lines.append(f"    CONSTRAINT {constraint_name} PRIMARY KEY ({columns_csv}){disable_clause}")
@@ -380,12 +418,26 @@ def _generate_create_table(
     # Unique constraints (inline)
     if unique_constraints:
         for constraint_name, unique_columns, status in unique_constraints:
+            constraint_name = _quote_if_needed(constraint_name)
             columns_csv = ", ".join(unique_columns)
             disable_clause = " DISABLE" if status == "DISABLED" else ""
             body_lines.append(f"    CONSTRAINT {constraint_name} UNIQUE ({columns_csv}){disable_clause}")
 
     lines.append(",\n".join(body_lines))
     lines.append(");")
+
+    # Append commented-out definitions for skipped virtual columns so the
+    # user can see what was intended and manually convert them if needed
+    # (e.g. replace CASE with DECODE) if their Oracle instance supports it
+    if skipped_columns:
+        lines.append(f"-- NOTE: {len(skipped_columns)} virtual column(s) skipped because CASE")
+        lines.append("-- expressions in virtual columns cause ORA-00922 on some Oracle instances.")
+        lines.append("-- To re-add, convert CASE to DECODE and use ALTER TABLE ... ADD (...).")
+        for col in skipped_columns:
+            col_name = col["column_name"]
+            col_type = _format_column_type(col)
+            expression = col.get("data_default", "").strip()
+            lines.append(f"--   {col_name} {col_type} GENERATED ALWAYS AS ({expression}) VIRTUAL")
 
     return "\n".join(lines)
 
@@ -433,7 +485,7 @@ def _generate_foreign_key_statements(
             referenced_columns_csv = ", ".join(referenced_columns)
 
             statement = (
-                f"ALTER TABLE {schema_prefix}{source_table} ADD CONSTRAINT {constraint_name}\n"
+                f"ALTER TABLE {schema_prefix}{source_table} ADD CONSTRAINT {_quote_if_needed(constraint_name)}\n"
                 f"    FOREIGN KEY ({source_columns_csv}) "
                 f"REFERENCES {reference_target} ({referenced_columns_csv})"
             )
@@ -488,6 +540,40 @@ def _generate_comment_statements(
     return statements
 
 
+def _generate_grant_statements(
+    schema_name: str,
+    grants: dict[str, set[str]],
+) -> list[str]:
+    """
+    Generate `GRANT REFERENCES` statements so other schemas can create
+    foreign keys that point to tables in this schema.
+
+    When schema A has a FK referencing schema B, Oracle requires that
+    schema B has granted REFERENCES on the target table to schema A.
+    Without this grant, schema A's `ALTER TABLE ... ADD FOREIGN KEY ...
+    REFERENCES B.table` will fail with ORA-00942.
+
+    Table names are always schema-qualified (e.g. ICSR_LOOKUP.COUNTRY)
+    because grants are inherently cross-schema and must work regardless
+    of which connection runs the script.
+
+    Args:
+        schema_name: The schema whose tables are being referenced.
+        grants: Dict mapping table_name -> set of grantee schema names
+            that need REFERENCES access to that table.
+
+    Returns:
+        List of `GRANT REFERENCES ON schema.table TO grantee;` statements.
+    """
+    statements: list[str] = []
+    for table_name in sorted(grants):
+        for grantee in sorted(grants[table_name]):
+            statements.append(
+                f"GRANT REFERENCES ON {schema_name}.{table_name} TO {grantee};"
+            )
+    return statements
+
+
 def _section_header(title: str) -> list[str]:
     """Return a commented section header block for the DDL output."""
     separator = "-- " + "-" * 88
@@ -498,6 +584,7 @@ def generate_schema_ddl(
     schema_name: str,
     metadata: dict[str, Any],
     schema_qualify: bool = False,
+    reference_grants: dict[str, set[str]] | None = None,
 ) -> str:
     """
     Generate the complete DDL script for a single database schema.
@@ -602,6 +689,15 @@ def generate_schema_ddl(
             output_parts.append(statement)
         output_parts.append("")
 
+    # Grant statements to allow other schemas to create FKs referencing this schema's tables
+    if reference_grants:
+        grant_statements = _generate_grant_statements(schema_name, reference_grants)
+        if grant_statements:
+            output_parts.extend(_section_header("Grants (REFERENCES privilege for cross-schema foreign keys)"))
+            for statement in grant_statements:
+                output_parts.append(statement)
+            output_parts.append("")
+
     return "\n".join(output_parts)
 
 
@@ -668,18 +764,39 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # First pass: load all metadata and collect cross-schema FK references
+    # so we know which GRANT REFERENCES statements to emit
+    all_metadata: dict[str, dict] = {}
+    for schema_dir in schema_dirs:
+        metadata_path = schema_dir / "_metadata.json"
+        with open(metadata_path, encoding="utf-8") as file:
+            all_metadata[schema_dir.name] = json.load(file)
+
+    # Build a map: referenced_schema -> {table_name -> {grantee schemas}}
+    # For example, if ICSR has a FK pointing to ICSR_LOOKUP.UNIT, then
+    # grants_by_schema["ICSR_LOOKUP"]["UNIT"] will contain "ICSR".
+    grants_by_schema: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    for schema_name, metadata in all_metadata.items():
+        for fk in metadata.get("foreign_keys", []):
+            referenced_schema = fk.get("r_owner")
+            referenced_table = fk.get("referenced_table")
+            if referenced_schema and referenced_schema != schema_name and referenced_table:
+                grants_by_schema[referenced_schema][referenced_table].add(schema_name)
+
+    # Second pass: generate and write DDL for each schema.
     for schema_dir in schema_dirs:
         schema_name = schema_dir.name
-        metadata_path = schema_dir / "_metadata.json"
+        metadata = all_metadata[schema_name]
 
         print(f"Processing {schema_name} ...")
-        with open(metadata_path, encoding="utf-8") as file:
-            metadata = json.load(file)
+
+        reference_grants = dict(grants_by_schema.get(schema_name, {})) or None
 
         ddl_script = generate_schema_ddl(
             schema_name=schema_name,
             metadata=metadata,
             schema_qualify=args.schema_qualify,
+            reference_grants=reference_grants,
         )
 
         output_path = output_dir / f"{schema_name}.sql"
