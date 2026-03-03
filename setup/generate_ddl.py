@@ -340,6 +340,7 @@ def _generate_create_table(
     pk_name: str | None,
     unique_constraints: list[tuple[str, list[str], str]] | None,
     is_temporary: bool,
+    schema_prefix: str = "",
 ) -> str:
     """
     Generate a complete `CREATE TABLE` statement for one table.
@@ -365,7 +366,7 @@ def _generate_create_table(
     lines: list[str] = []
 
     prefix = "CREATE GLOBAL TEMPORARY TABLE" if is_temporary else "CREATE TABLE"
-    lines.append(f"{prefix} {table_name} (")
+    lines.append(f"{prefix} {schema_prefix}{table_name} (")
 
     body_lines = [_generate_column_line(column) for column in sorted_columns]
 
@@ -392,6 +393,7 @@ def _generate_create_table(
 def _generate_foreign_key_statements(
     current_schema: str,
     fk_groups_by_table: dict[str, list[tuple[str, list[dict], str]]],
+    schema_prefix: str = "",
 ) -> list[str]:
     """
     Generate `ALTER TABLE ... ADD FOREIGN KEY` statements for all tables.
@@ -425,13 +427,13 @@ def _generate_foreign_key_statements(
             if referenced_schema and referenced_schema != current_schema:
                 reference_target = f"{referenced_schema}.{referenced_table}"
             else:
-                reference_target = referenced_table
+                reference_target = f"{schema_prefix}{referenced_table}"
 
             source_columns_csv = ", ".join(source_columns)
             referenced_columns_csv = ", ".join(referenced_columns)
 
             statement = (
-                f"ALTER TABLE {source_table} ADD CONSTRAINT {constraint_name}\n"
+                f"ALTER TABLE {schema_prefix}{source_table} ADD CONSTRAINT {constraint_name}\n"
                 f"    FOREIGN KEY ({source_columns_csv}) "
                 f"REFERENCES {reference_target} ({referenced_columns_csv})"
             )
@@ -450,7 +452,11 @@ def _generate_foreign_key_statements(
     return statements
 
 
-def _generate_comment_statements(table_comments: list[dict], column_comments: list[dict]) -> list[str]:
+def _generate_comment_statements(
+    table_comments: list[dict],
+    column_comments: list[dict],
+    schema_prefix: str = "",
+) -> list[str]:
     """
     Generate `COMMENT ON TABLE` / `COMMENT ON COLUMN` statements.
 
@@ -468,14 +474,14 @@ def _generate_comment_statements(table_comments: list[dict], column_comments: li
         comment_text = table_comment.get("comments")
         if comment_text:
             escaped_text = comment_text.replace("'", "''")
-            statements.append(f"COMMENT ON TABLE {table_comment['table_name']} IS '{escaped_text}';")
+            statements.append(f"COMMENT ON TABLE {schema_prefix}{table_comment['table_name']} IS '{escaped_text}';")
 
     for column_comment in column_comments:
         comment_text = column_comment.get("comments")
         if comment_text:
             escaped_text = comment_text.replace("'", "''")
             statements.append(
-                f"COMMENT ON COLUMN {column_comment['table_name']}.{column_comment['column_name']} "
+                f"COMMENT ON COLUMN {schema_prefix}{column_comment['table_name']}.{column_comment['column_name']} "
                 f"IS '{escaped_text}';"
             )
 
@@ -491,6 +497,7 @@ def _section_header(title: str) -> list[str]:
 def generate_schema_ddl(
     schema_name: str,
     metadata: dict[str, Any],
+    schema_qualify: bool = False,
 ) -> str:
     """
     Generate the complete DDL script for a single database schema.
@@ -538,6 +545,9 @@ def generate_schema_ddl(
     # Check for virtual columns that depend on external functions
     function_warnings = _find_required_function_warnings(columns)
 
+    # Compute prefix for schema-qualified table names
+    schema_prefix = f"{schema_name}." if schema_qualify else ""
+
     # Assemble the output script
     execution_order_display = " -> ".join(EXECUTION_ORDER)
     output_parts: list[str] = [
@@ -571,12 +581,13 @@ def generate_schema_ddl(
             pk_name=pk_name_by_table.get(table_name),
             unique_constraints=unique_constraints_by_table.get(table_name),
             is_temporary=is_temporary,
+            schema_prefix=schema_prefix,
         )
         output_parts.append(create_statement)
         output_parts.append("")
 
     # Foreign key statements
-    fk_statements = _generate_foreign_key_statements(schema_name, fk_groups_by_table)
+    fk_statements = _generate_foreign_key_statements(schema_name, fk_groups_by_table, schema_prefix)
     if fk_statements:
         output_parts.extend(_section_header("Foreign keys"))
         for statement in fk_statements:
@@ -584,7 +595,7 @@ def generate_schema_ddl(
             output_parts.append("")
 
     # Comment statements (COMMENT ON TABLE / COMMENT ON COLUMN)
-    comment_statements = _generate_comment_statements(table_comments, column_comments)
+    comment_statements = _generate_comment_statements(table_comments, column_comments, schema_prefix)
     if comment_statements:
         output_parts.extend(_section_header("Comments"))
         for statement in comment_statements:
@@ -615,6 +626,12 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="Schemas to process (default: all found in input-dir)",
+    )
+    parser.add_argument(
+        "--schema-qualify",
+        action="store_true",
+        default=False,
+        help="Prefix table names with the schema name (e.g. ICSR_LOOKUP.COUNTRY)",
     )
     return parser.parse_args()
 
@@ -662,6 +679,7 @@ def main() -> None:
         ddl_script = generate_schema_ddl(
             schema_name=schema_name,
             metadata=metadata,
+            schema_qualify=args.schema_qualify,
         )
 
         output_path = output_dir / f"{schema_name}.sql"
