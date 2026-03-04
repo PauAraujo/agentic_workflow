@@ -46,7 +46,7 @@ def _get_embedding_client(settings: Settings) -> AzureOpenAI:
     global _embedding_client
     if _embedding_client is None:
         _embedding_client = AzureOpenAI(
-            api_key=settings.azure.api_key,
+            api_key=settings.azure.api_key.get_secret_value(),
             api_version=settings.azure.api_version,
             azure_endpoint=str(settings.azure.openai_endpoint),
         )

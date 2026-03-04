@@ -8,6 +8,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     AnyHttpUrl,
+    SecretStr,
     ValidationError,
     model_validator,
 )
@@ -135,10 +136,9 @@ class AzureOpenAISettings(EnvBaseSettings):
     openai_endpoint: AnyHttpUrl = Field(
         validation_alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI base URL"
     )
-    api_key: str = Field(
+    api_key: SecretStr = Field(
         validation_alias="AZURE_OPENAI_API_KEY",
         description="Azure OpenAI API Key",
-        min_length=1,
     )
     api_version: str = Field(
         validation_alias="AZURE_OPENAI_API_VERSION",
