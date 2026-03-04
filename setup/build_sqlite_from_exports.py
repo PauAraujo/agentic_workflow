@@ -9,7 +9,8 @@ from sql_query_assistant.config import Settings
 
 sys.path.append(str(Path(__file__).parents[1]))
 
-DB_EXPORTS_DIR = "db_exports"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_EXPORTS_DIR = PROJECT_ROOT / "setup" / "data" / "oracle_exports"
 
 
 def build_schema(
@@ -65,7 +66,7 @@ def build_schema(
 def main():
     settings = Settings()
 
-    export_dir = settings.paths.input_dir / DB_EXPORTS_DIR
+    export_dir = DEFAULT_EXPORTS_DIR
     if not export_dir.exists():
         raise FileNotFoundError(f"Export directory not found: {export_dir}")
 

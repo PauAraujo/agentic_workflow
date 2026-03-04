@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Resolve project root relative to this script: setup/enrich_table_cards.py -> ../ -> Project Root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_EXPORTS_DIR = PROJECT_ROOT / "input/supplied_descriptions"
+DEFAULT_EXPORTS_DIR = PROJECT_ROOT / "setup/data/descriptions"
 # all schemas (ICSR, ICSR_LOOKUP, ICSR_EMA, etc.) get enriched in one pass
 DEFAULT_CARDS_DIR = PROJECT_ROOT / "input/table_cards"
 TABLE_EXCEL_FILE = "ev-icsr-tables.xlsx"

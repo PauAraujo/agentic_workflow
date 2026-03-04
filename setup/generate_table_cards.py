@@ -7,6 +7,8 @@ from pathlib import Path
 
 from sql_query_assistant.config import PathSettings
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 # Label-column heuristics for identifying human-readable values in lookup tables
 VALUE_COLUMN_CANDIDATES = ["NAME", "LABEL", "DESCRIPTION", "DESC", "TITLE"]
 VALUE_COLUMN_SUFFIXES = ["_NAME", "_DESC"]
@@ -38,7 +40,7 @@ ORACLE_NUMBER_TYPE = "NUMBER"
 
 # File/path constants
 METADATA_FILENAME = "_metadata.json"
-DB_EXPORTS_DIR = "db_exports"
+DB_EXPORTS_DIR = "oracle_exports"
 JSON_EXTENSION = ".json"
 CSV_EXTENSION = ".csv"
 UTF8_ENCODING = "utf-8"
@@ -192,7 +194,7 @@ def parse_args():
     parser.add_argument(
         "--exports-dir",
         default=None,
-        help=f"Base exports directory (defaults to input/{DB_EXPORTS_DIR}).",
+        help=f"Base exports directory (defaults to setup/data/{DB_EXPORTS_DIR}).",
     )
     parser.add_argument(
         "--metadata-file",
@@ -693,7 +695,7 @@ def main():
     paths = PathSettings()
 
     # Resolve directory paths with defaults
-    exports_dir = Path(args.exports_dir or paths.input_dir / DB_EXPORTS_DIR)
+    exports_dir = Path(args.exports_dir or PROJECT_ROOT / "setup" / "data" / DB_EXPORTS_DIR)
     cards_dir = Path(args.cards_dir or paths.table_cards_dir)
 
     # Determine which metadata files to process

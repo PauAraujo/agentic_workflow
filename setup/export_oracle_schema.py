@@ -3,8 +3,8 @@ import json
 import oracledb
 import argparse
 
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 from datetime import datetime, timezone
 
 from sql_query_assistant.config import DatabaseSettings
@@ -13,7 +13,7 @@ project_root = Path(__file__).resolve().parents[1]
 
 # Defaults
 DEFAULT_SCHEMA = "ICSR_EMA"
-BASE_OUTPUT_DIRECTORY = project_root / "input" / "db_exports"
+BASE_OUTPUT_DIRECTORY = project_root / "setup" / "data" / "oracle_exports"
 CSV_ROW_LIMIT = 1000
 METADATA_FILENAME = "_metadata.json"
 SEPARATOR = "-" * 40

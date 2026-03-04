@@ -9,8 +9,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INPUT_DIR = PROJECT_ROOT / "input" / "db_exports"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "input" / "exports_and_DDL" / "created_ddl"
+DEFAULT_INPUT_DIR = PROJECT_ROOT / "setup" / "data" / "oracle_exports"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "setup" / "generated_ddl"
 
 # The schemas must be created in this order because later schemas reference
 # tables defined in earlier ones (via foreign keys).
