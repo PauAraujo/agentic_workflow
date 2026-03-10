@@ -14,15 +14,16 @@ Table of contents:
  
 3) Environment quickstart
 
-4) Project setup 
+4) Project setup
   - Step 1. Export from Oracle
+  - Step 1b. Generate DDL scripts (optional)
   - Step 2. Build SQLite database
   - Step 3. Generate table cards
   - Step 4. Enrich table cards (optional)
   - Step 5. Build Azure AI Search index
   - Typical workflow
   
-5) Utilities
+5) Diagnostics
 ```
 
 ## 1) Azure setup
@@ -96,12 +97,12 @@ DRAFTER_TEMPERATURE="0.0"
 ``` 
 
 **Common Claude models (as of Jan 2026):**
-- `eu.anthropic.claude-opus-4-5-20251101-v1:0` - latest Sonnet (recommended)
-- `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` - previous Sonnet
-- `eu.anthropic.claude-haiku-4-5-20251001-v1:0` - haiku (faster, cheaper)
-- `eu.anthropic.claude-3-haiku-20240307-v1:0` - opus (most capable)
+- `eu.anthropic.claude-opus-4-5-20251101-v1:0` - Opus (most capable)
+- `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` - Sonnet (recommended)
+- `eu.anthropic.claude-haiku-4-5-20251001-v1:0` - Haiku 4.5 (faster, cheaper)
+- `eu.anthropic.claude-3-haiku-20240307-v1:0` - Claude 3 Haiku (legacy, cheapest)
 
-To see up-to date list of all available foundation models and inference profiles run: `utilities/check_bedrock_models.py`
+To see up-to date list of all available foundation models and inference profiles run: `diagnostics/check_bedrock_models.py`
 
 
 ### Troubleshooting AWS connection
@@ -124,7 +125,7 @@ Model may not be enabled in your AWS account or region. Run the utility script `
 #### Error when retrieving token from sso
 If your AWS session expired, you may run into errors.
 
-To verify your AWS SSO profile and session are live before using Bedrock, run the utility script `connect_aws_sso.py`.
+To verify your AWS SSO profile and session are live before using Bedrock, run the utility script `check_aws_sso.py`.
 
 You may need to login first (`aws sso login --profile <your_profile_name>`).
 Click the link (*tip:* in incognito mode) and login to your EMA account.
@@ -132,7 +133,8 @@ Click the link (*tip:* in incognito mode) and login to your EMA account.
 ## 3) Environment quickstart (do this first)
 1) Copy `.env.example` to `.env` at project root (never commit secrets).
 2) Fill these required values:
-   - Azure OpenAI: 
+   - Database backend: `DB_TYPE` (`"sqlite"` for local .db files, `"oracle"` for direct Oracle)
+   - Azure OpenAI:
      - `AZURE_OPENAI_ENDPOINT`
      - `AZURE_OPENAI_API_KEY`
      - `AZURE_OPENAI_API_VERSION`
@@ -148,11 +150,13 @@ Click the link (*tip:* in incognito mode) and login to your EMA account.
      - `DB_USER`
      - `DB_PASSWORD`
 3) Optional but supported:
-   - AWS Bedrock (alternate LLM): 
+   - AWS Bedrock (alternate LLM):
      - `AWS_REGION`
      - `AWS_PROFILE`
      - `AWS_BEDROCK_MAX_RETRIES`
-     - `BEDROCK_MODEL_ID`.
+   - Embedding config:
+     - `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` (default: `text-embedding-3-small`)
+     - `AZURE_OPENAI_EMBEDDING_DIMENSIONS` (default: `1536`)
    - Langfuse tracing: 
      - `LANGFUSE_PUBLIC_KEY`
      - `LANGFUSE_SECRET_KEY`
@@ -180,7 +184,7 @@ Ensure your `.env` file (at project root) contains the Oracle database credentia
 ```  
 # Oracle Database (Setup only - for export_oracle_schema.py)
 DB_HOST="your-oracle-host"
-DB_PORT=1571
+DB_PORT=1521
 DB_SERVICE="your-service-name"
 DB_USER="your-username"
 DB_PASSWORD="your-password"
@@ -189,7 +193,7 @@ DB_PASSWORD="your-password"
 To customize what gets exported, edit these constants in `export_oracle_schema.py`:
 ```python
 TARGET_SCHEMA = 'ICSR_LOOKUP'                  # Schema name you want to export
-BASE_OUTPUT_DIRECTORY = '../input/db_exports'  # Output location
+BASE_OUTPUT_DIRECTORY = '../setup/data/oracle_exports'  # Output location
 CSV_ROW_LIMIT = 1000                           # Max rows per table to export
 ```
 #### 1.1.1 Usage
@@ -211,8 +215,8 @@ The script:
 
 
 #### 1.1.2 Output structure
-``` 
-  input/db_exports/
+```
+  setup/data/oracle_exports/
   └── ICSR_LOOKUP/               # Schema name (uppercase)
       ├── COUNTRY.csv            # Table data (1000 rows max)
       ├── DOSE_FORM.csv
@@ -220,28 +224,50 @@ The script:
       └── _metadata.json         # Complete schema metadata
 ```
 
+### Step 1b. Generate DDL scripts (optional)
+Use `generate_ddl.py` to convert the `_metadata.json` files from Step 1 into readable Oracle DDL scripts (`.sql`). This is **not required** for the main pipeline. It's a utility for reviewing or recreating the database schema outside of this project.
+
+The script reads the exported metadata (tables, columns, constraints, foreign keys, comments) and produces clean SQL with `CREATE TABLE`, `ALTER TABLE ... FOREIGN KEY`, and `COMMENT ON` statements.
+
+```
+# Generate DDL for all exported schemas
+python setup/generate_ddl.py
+
+# Generate DDL for specific schemas only
+python setup/generate_ddl.py --schemas ICSR ICSR_EMA
+```
+
+**Input/Output:**
+```
+INPUT:                                    OUTPUT:
+setup/data/oracle_exports/                setup/generated_ddl/
+├── ICSR/_metadata.json              →    ├── ICSR.sql
+├── ICSR_EMA/_metadata.json          →    ├── ICSR_EMA.sql
+└── ICSR_LOOKUP/_metadata.json       →    └── ICSR_LOOKUP.sql
+```
+
 ### Step 2. Build SQLite database
 Use `build_sqlite_from_exports.py` to convert the exported Oracle data and metadata into a local SQLite database for development and testing.
 
 #### 2.1 Input/Output flow
-``` 
-  INPUT:                                 OUTPUT:
-  input/db_exports/                      input/db/
-  └── ICSR_LOOKUP/                       └── ICSR_LOOKUP.db
-      ├── ACCESS_RIGHT.csv          →        └── Tables:
-      ├── ACCESS_LEVEL.csv          →            ├── ACCESS_RIGHT
-      └── PATIENT.csv               →            ├── ACCESS_LEVEL
-                                                 └── PATIENT
+```
+  INPUT:                                    OUTPUT:
+  setup/data/oracle_exports/                input/schemas_dir/
+  └── ICSR_LOOKUP/                          └── ICSR_LOOKUP.db
+      ├── ACCESS_RIGHT.csv          →           └── Tables:
+      ├── ACCESS_LEVEL.csv          →               ├── ACCESS_RIGHT
+      └── PATIENT.csv               →               ├── ACCESS_LEVEL
+                                                     └── PATIENT
 ``` 
 
 #### 2.2 Usage
 ```
-# Build all schemas found in input/db_exports/
+# Build all schemas found in setup/data/oracle_exports/
 python setup/build_sqlite_from_exports.py
-``` 
+```
 
 This script:
-1. Finds all schema folders in `input/db_exports/`
+1. Finds all schema folders in `setup/data/oracle_exports/`
 2. Creates SQLite databases (one `.db` file per schema)
 3. Imports CSV data (each CSV becomes a table in the database)
 4. Preserves structure, maintaining the same table and column names
@@ -287,8 +313,8 @@ Each table card JSON file contains structured metadata that the AI can use to un
 Run `enrich_table_cards.py` after `generate_table_cards.py` to fill missing descriptions from supplied Excel files.
 
 - Inputs (defaults):
-  - `input/supplied_descriptions/ev-icsr-tables.xlsx` (owner/schema, table name, comment)
-  - `input/supplied_descriptions/ev-icsr-columns.xlsx` (table, column, comment)
+  - `setup/data/descriptions/ev-icsr-tables.xlsx` (owner/schema, table name, comment)
+  - `setup/data/descriptions/ev-icsr-columns.xlsx` (table, column, comment)
   - Generated table cards in `input/table_cards/` (or a schema subfolder)
 The script will fill missing column or table descriptions. It only updates empty descriptions; existing text is preserved.
 
@@ -300,7 +326,7 @@ python setup/enrich_table_cards.py
 
 Use `setup_table_cards_index.py` to create a searchable index of your table cards in Azure AI Search. 
 
-#### 4.1 Prerequisites
+#### Prerequisites
 
 Before running this step, you need:
 1. An Azure AI Search service set up in Azure (access using your ZM account)
@@ -322,7 +348,7 @@ Azure Portal → Your Search Service → Overview → URL
 - `AZURE_SEARCH_QUERY_KEY` Settings → Keys → Manage Query Keys
 - `AZURE_SEARCH_TABLE_CARDS_INDEX` Choose a name (default: *sql_assistant_table_cards_index*)
 
-#### 4.2 Usage
+#### Usage
 ```
 # Create index and upload table cards
 python setup/setup_table_cards_index.py
@@ -342,14 +368,14 @@ Re-run this script whenever you add or modify table cards. The script will recre
 # Run export (usually takes 1-5 minutes depending on schema size)
 python setup/export_oracle_schema.py
 ```
-*Output:* CSV files in `input/db_exports/ICSR_LOOKUP/` and `_metadata.json` with schema structure
+*Output:* CSV files in `setup/data/oracle_exports/ICSR_LOOKUP/` and `_metadata.json` with schema structure
 
 #### 2. Build SQLite database
 ```
 # Import all CSVs into SQLite (usually takes seconds)
 python setup/build_sqlite_from_exports.py
 ```
-*Output:* `input/db/ICSR_LOOKUP.db` ready to query
+*Output:* `input/schemas_dir/ICSR_LOOKUP.db` ready to query
 
 #### 3. Generate table cards
 ```
@@ -372,11 +398,11 @@ Export and build **multiple schemas** by changing `TARGET_SCHEMA` in `export_ora
 ```
 # Edit export_oracle_schema.py: set TARGET_SCHEMA = 'SCHEMA1'
 # Run for first schema
-python setup/export_oracle_schema.py  # Creates db_exports/SCHEMA1/
+python setup/export_oracle_schema.py  # Creates setup/data/oracle_exports/SCHEMA1/
 
 # Edit export_oracle_schema.py: set TARGET_SCHEMA = 'SCHEMA2'
 # Run for second schema
-python setup/export_oracle_schema.py  # Creates db_exports/SCHEMA2/
+python setup/export_oracle_schema.py  # Creates setup/data/oracle_exports/SCHEMA2/
 
 # Build both databases at once
 python setup/build_sqlite_from_exports.py  # Creates SCHEMA1.db and SCHEMA2.db
@@ -394,7 +420,7 @@ If you only need the **schema structure** (`_metadata.json` without exporting CS
 
 
 Alternatively, if you want to perform **incremental updates** (i.e. adding more tables without re-exporting everything):
-1. Manually add CSV files to `input/db_exports/SCHEMA_NAME/`
+1. Manually add CSV files to `setup/data/oracle_exports/SCHEMA_NAME/`
 2. Run `python setup/build_sqlite_from_exports.py`
 3. Run `python setup/generate_table_cards.py`
 4. Run `python setup/enrich_table_cards.py` (if needed)
@@ -403,10 +429,6 @@ Alternatively, if you want to perform **incremental updates** (i.e. adding more 
 
 
 
-## 5) Utilities
+## 5) Diagnostics
 
-The `setup/utilities/` folder contains diagnostic scripts to verify connectivity and configuration, useful for troubleshooting if you encounter issues during setup.
-
-All utility scripts load credentials from the root `.env` file - no need to edit the scripts themselves. See `setup/utilities/README.md` for detailed usage instructions.
-
-For a complete list of utility scripts and their purposes, see `setup/utilities/README.md`.
+The `setup/diagnostics/` folder contains diagnostic scripts to verify connectivity and configuration, useful for troubleshooting if you encounter issues during setup.
