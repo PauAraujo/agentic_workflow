@@ -60,7 +60,7 @@ def create_backend(settings: Settings) -> DatabaseBackend:
     Raises:
         ValueError: If db_type is not supported
     """
-    db_type = settings.database.db_type
+    db_type = settings.database.type
 
     if db_type == "sqlite":
         from .sqlite_backend import SQLiteBackend

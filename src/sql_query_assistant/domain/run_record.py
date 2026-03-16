@@ -7,7 +7,7 @@ from sqlglot.expressions import Table
 from typing import Any, ClassVar, Literal, TYPE_CHECKING
 
 from sql_query_assistant.domain.retrieval_result import RetrievalResult
-from sql_query_assistant.config import AgentSettings, TableSelectorSettings
+from sql_query_assistant.config import ModelConfig, TableSelectionSettings
 from sql_query_assistant.domain.table_selection import (
     TableSelectionDecision,
     TableSelectionResponse,
@@ -69,8 +69,10 @@ class ConfigSnapshot(BaseModel):
     target_sql_dialect: str
     max_repair_attempts: int
     total_available_tables: int
-    agents: AgentSettings
-    table_selector: TableSelectorSettings
+    drafter: ModelConfig
+    repairer: ModelConfig
+    table_selector: ModelConfig
+    table_selection: TableSelectionSettings
     retrieval: RetrievalConfigSnapshot | None = None
 
 
@@ -228,8 +230,10 @@ class RunRecord(BaseModel):
             target_sql_dialect=settings.target_sql_dialect,
             max_repair_attempts=settings.max_repair_attempts,
             total_available_tables=len(all_table_cards),
-            agents=settings.agents,
-            table_selector=settings.table_selector,
+            drafter=settings.agents.drafter,
+            repairer=settings.agents.repairer,
+            table_selector=settings.agents.table_selector,
+            table_selection=settings.table_selection,
             retrieval=retrieval_config,
         )
 
@@ -399,13 +403,13 @@ class RunRecord(BaseModel):
             "num_tables_selected": len(self.selection.selected_tables),
             "num_tables_used": dv.tables_used_count,
             # models
-            "drafter_provider": self.config.agents.drafter.provider,
-            "drafter_model": self.config.agents.drafter.model_name,
+            "drafter_provider": self.config.drafter.model_provider,
+            "drafter_model": self.config.drafter.model_name,
             "repairer_provider": (
-                self.config.agents.repairer.provider if has_repairs else ""
+                self.config.repairer.model_provider if has_repairs else ""
             ),
             "repairer_model": (
-                self.config.agents.repairer.model_name if has_repairs else ""
+                self.config.repairer.model_name if has_repairs else ""
             ),
             # SQL output
             "final_sql": dv.final_sql or "",

@@ -48,7 +48,7 @@ def _get_embedding_client(settings: Settings) -> AzureOpenAI:
         _embedding_client = AzureOpenAI(
             api_key=settings.azure.api_key.get_secret_value(),
             api_version=settings.azure.api_version,
-            azure_endpoint=str(settings.azure.openai_endpoint),
+            azure_endpoint=str(settings.azure.endpoint),
         )
     return _embedding_client
 
@@ -253,7 +253,7 @@ def retrieve_relevant_table_cards(
     # Initialize Azure Search client
     search_client = SearchClient(
         endpoint=str(settings.azure_search.endpoint),
-        index_name=settings.azure_search.table_cards_index_name,
+        index_name=settings.azure_search.table_cards_index,
         credential=AzureKeyCredential(settings.azure_search.query_key),
     )
 

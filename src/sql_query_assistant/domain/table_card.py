@@ -104,12 +104,6 @@ class TableCardWithSelection(BaseModel):
     """
     TableCard enriched with selection context from the Table Selector.
 
-    This model combines the full table schema (TableCard) with metadata about
-    why and how the table was selected for the query. This enables:
-    - User transparency (showing why tables were chosen)
-    - Debugging and auditability
-    - Preserving LLM reasoning without cluttering downstream prompts
-
     The table_card contains immutable schema metadata (columns, FKs, descriptions).
     The selection metadata (reason, key_columns) captures the LLM's decision context.
     """

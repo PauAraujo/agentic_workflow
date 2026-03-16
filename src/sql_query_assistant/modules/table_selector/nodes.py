@@ -117,9 +117,9 @@ def select_tables(
     # Core tables act as a safety net for critical tables the retriever might miss.
 
     # Get configurable values from settings
-    core_tables = set(settings.table_selector.core_tables)
+    core_tables = set(settings.table_selection.core_tables)
     noise_value_maps = {
-        name.upper() for name in settings.table_selector.noise_value_maps
+        name.upper() for name in settings.table_selection.noise_value_maps
     }
 
     # Add core tables that aren't already in retrieved set

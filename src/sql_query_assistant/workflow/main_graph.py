@@ -6,15 +6,15 @@ from langgraph.graph import END, StateGraph
 from sql_query_assistant.config import Settings
 from sql_query_assistant.llm_client import LLMClient
 from sql_query_assistant.state import WorkflowState
-from sql_query_assistant.modules.table_card_retriever import (
-    retrieve_relevant_table_cards,
-)
+from sql_query_assistant.persistence import persist_results
 from sql_query_assistant.modules.table_selector import select_tables
 from sql_query_assistant.modules.sql_drafter import draft_sql
 from sql_query_assistant.modules.sql_validator import validate_sql
 from sql_query_assistant.modules.sql_repairer import repair_sql
 from sql_query_assistant.modules.sql_executor import execute_sql
-from sql_query_assistant.persistence import persist_results
+from sql_query_assistant.modules.table_card_retriever import (
+    retrieve_relevant_table_cards,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -20,20 +20,20 @@ class OracleBackend:
         db_settings = self._settings.database
         # Construct the dsn connection string
         data_source_name = oracledb.makedsn(
-            db_settings.oracle_host,
-            db_settings.oracle_port,
-            service_name=db_settings.oracle_service,
+            db_settings.host,
+            db_settings.port,
+            service_name=db_settings.service,
         )
         conn = oracledb.connect(
-            user=db_settings.oracle_user,
-            password=db_settings.oracle_password,
+            user=db_settings.user,
+            password=db_settings.password,
             dsn=data_source_name,
         )
         logger.debug(
             "Connected to Oracle at %s:%d/%s",
-            db_settings.oracle_host,
-            db_settings.oracle_port,
-            db_settings.oracle_service,
+            db_settings.host,
+            db_settings.port,
+            db_settings.service,
         )
         return conn
 
