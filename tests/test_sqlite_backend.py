@@ -13,7 +13,7 @@ def test_create_backend_returns_sqlite(dummy_settings):
 
 def test_create_backend_rejects_unsupported_type(dummy_settings):
     """Factory should raise ValueError for unsupported db_type."""
-    dummy_settings.database.db_type = "postgres"
+    dummy_settings.database.type = "postgres"
     with pytest.raises(ValueError, match="Unsupported DB_TYPE"):
         create_backend(dummy_settings)
 

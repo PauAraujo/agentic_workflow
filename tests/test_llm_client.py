@@ -19,7 +19,7 @@ def client(dummy_settings):
 
 @pytest.fixture
 def model_config():
-    return ModelConfig(provider="azure", model_name="gpt-4o", temperature=0.0)
+    return ModelConfig(model_provider="azure", model_name="gpt-4o", temperature=0.0)
 
 
 def _patch_create_llm(client, invoke_side_effect):

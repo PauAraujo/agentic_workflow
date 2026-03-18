@@ -26,7 +26,7 @@ def test_retrieve_raises_on_zero_search_results():
     mock_settings = MagicMock()
     mock_settings.azure_search.endpoint = "https://example.search.windows.net"
     mock_settings.azure_search.query_key = "dummy-key"
-    mock_settings.azure_search.table_cards_index_name = "table-cards-index"
+    mock_settings.azure_search.table_cards_index = "table-cards-index"
     mock_settings.azure_search.top_k = 10
     mock_settings.azure_search.hybrid_search_enabled = False
 
@@ -62,7 +62,7 @@ def test_retrieve_error_message_includes_query_context():
     mock_settings = MagicMock()
     mock_settings.azure_search.endpoint = "https://example.search.windows.net"
     mock_settings.azure_search.query_key = "dummy-key"
-    mock_settings.azure_search.table_cards_index_name = "table-cards-index"
+    mock_settings.azure_search.table_cards_index = "table-cards-index"
     mock_settings.azure_search.top_k = 10
     mock_settings.azure_search.hybrid_search_enabled = False
 

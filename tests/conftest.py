@@ -48,13 +48,13 @@ def dummy_settings(tmp_path):
     """Creates dummy Settings instance for testing, using tmp_path for both input and output."""
     return Settings(
         azure=AzureOpenAISettings(
-            openai_endpoint="https://example.openai.azure.com",
+            endpoint="https://example.openai.azure.com",
             api_key="dummy-key",
             api_version="2024-02-15-preview",
             max_retries=1,
         ),
         langfuse=None,
-        database=DatabaseSettings(db_type="sqlite"),
+        database=DatabaseSettings(type="sqlite"),
         paths=PathSettings(
             input_dir=tmp_path,
             output_dir=tmp_path,

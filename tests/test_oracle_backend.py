@@ -21,12 +21,12 @@ def oracle_settings(dummy_settings):
         pytest.skip("Oracle credentials not available")
 
     dummy_settings.database = DatabaseSettings(
-        db_type="oracle",
-        oracle_host=os.getenv("DB_HOST"),
-        oracle_port=int(os.getenv("DB_PORT", "1521")),
-        oracle_service=os.getenv("DB_SERVICE"),
-        oracle_user=os.getenv("DB_USER"),
-        oracle_password=os.getenv("DB_PASSWORD"),
+        type="oracle",
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT", "1521")),
+        service=os.getenv("DB_SERVICE"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
     )
     return dummy_settings
 
@@ -35,21 +35,21 @@ def test_oracle_database_settings_validates_credentials():
     """DatabaseSettings should reject oracle mode without credentials."""
     # _env_file=None prevents loading from .env (which may have real Oracle credentials)
     with pytest.raises(ValueError, match="Oracle credentials required"):
-        DatabaseSettings(db_type="oracle", _env_file=None)
+        DatabaseSettings(type="oracle", _env_file=None)
 
 
 def test_oracle_database_settings_accepts_valid_credentials():
     """DatabaseSettings should accept oracle mode with all credentials."""
     settings = DatabaseSettings(
-        db_type="oracle",
-        oracle_host="localhost",
-        oracle_service="ORCL",
-        oracle_user="user",
-        oracle_password="pass",
+        type="oracle",
+        host="localhost",
+        service="ORCL",
+        user="user",
+        password="pass",
         _env_file=None,
     )
-    assert settings.db_type == "oracle"
-    assert settings.oracle_host == "localhost"
+    assert settings.type == "oracle"
+    assert settings.host == "localhost"
 
 
 def test_oracle_execute_query(oracle_settings):
